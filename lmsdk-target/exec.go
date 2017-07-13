@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"syscall"
 
 	"launchpad.net/gnuflag"
@@ -46,12 +45,7 @@ lmsdk-target %s container [command]`, myMode)
 }
 
 func (c *execCmd) flags() {
-	user, err := user.Current()
-	if err == nil {
-		c.user = user.Username
-	}
-
-	gnuflag.StringVar(&c.user, "u", c.user, "Username to login before executing the command.")
+	gnuflag.StringVar(&c.user, "u", "", "Username to login before executing the command.")
 }
 
 func (c *execCmd) run(args []string) error {
@@ -62,6 +56,19 @@ func (c *execCmd) run(args []string) error {
 
 	c.container = args[0]
 	args = args[1:]
+
+	if len(c.user) == 0 {
+		lmCont, err := lm_sdk_tools.LoadLMContainer(c.container)
+		if err != nil {
+			return err
+		}
+		_, _, cUser, err := lm_sdk_tools.DistroToUserIds(lmCont.Distribution)
+		if err != nil {
+			return err
+		}
+
+		c.user = cUser
+	}
 
 	lxc_command, err := exec.LookPath("lxc-attach")
 	if err != nil {

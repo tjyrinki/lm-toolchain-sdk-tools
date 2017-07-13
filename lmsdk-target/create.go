@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Canonical Ltd
- * Copyright (C) 2017 Link-Motion Oy
+ * Copyright (C) 2017 Link Motion Oy
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 3 as
@@ -29,7 +29,6 @@ import (
 	"os/user"
 	"regexp"
 	"strconv"
-	"syscall"
 
 	"path"
 
@@ -90,7 +89,7 @@ func (c *createCmd) run(args []string) error {
 		return fmt.Errorf("ERROR: %s", err.Error())
 	}
 
-	mapfile, err := c.GenerateDefaultConfigFile()
+	mapfile, err := c.GenerateDefaultConfigFile(c.distro)
 	if err != nil {
 		return fmt.Errorf("ERROR: %s", err.Error())
 	}
@@ -122,6 +121,11 @@ func (c *createCmd) run(args []string) error {
 		DisableGPGValidation: true,
 	}
 
+	containerUserId, _, containerUserName, err := lm_sdk_tools.DistroToUserIds(c.distro)
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("Selected options: %v\n", options)
 
 	if err := container.Create(options); err != nil {
@@ -129,7 +133,7 @@ func (c *createCmd) run(args []string) error {
 		return fmt.Errorf("ERROR: %v", err.Error())
 	}
 
-	if err = c.registerUserInContainer(container); err != nil {
+	if err = c.registerUserInContainer(container, uint(containerUserId), containerUserName); err != nil {
 		lm_sdk_tools.RemoveContainerSync(container.Name())
 		return fmt.Errorf("ERROR: %v", err.Error())
 	}
@@ -165,13 +169,13 @@ func (c *createCmd) run(args []string) error {
 	return nil
 }
 
-func (c *createCmd) GenerateDefaultConfigFile() (string, error) {
+func (c *createCmd) GenerateDefaultConfigFile(distro string) (string, error) {
 	confDir, err := lm_sdk_tools.ConfigPath()
 	if err != nil {
 		return "", err
 	}
 
-	confFileName := fmt.Sprintf("%s/lmsdk-default.conf", confDir)
+	confFileName := fmt.Sprintf("%s/lmsdk-%s-default.conf", confDir, distro)
 	if _, err := os.Stat(confFileName); os.IsNotExist(err) {
 
 		fmt.Printf("Creating %s\n", confFileName)
@@ -199,6 +203,11 @@ func (c *createCmd) GenerateDefaultConfigFile() (string, error) {
 			return "", err
 		}
 
+		containerUid, containerGid, _, err := lm_sdk_tools.DistroToUserIds(c.distro)
+		if err != nil {
+			return "", err
+		}
+
 		uid := uint32(t_uid)
 		gid := uint32(t_gid)
 
@@ -214,24 +223,28 @@ func (c *createCmd) GenerateDefaultConfigFile() (string, error) {
 
 		writer.WriteString("lxc.include = /etc/lxc/default.conf\n")
 
+		if containerUid >= firstUid && containerUid < (firstUid+uidRange) {
+
+		}
+
 		//map the first uid and gid range before the current users id
-		writer.WriteString(fmt.Sprintf("lxc.id_map = u 0 %d %d\n", firstUid, uid))
-		writer.WriteString(fmt.Sprintf("lxc.id_map = g 0 %d %d\n", firstGid, gid))
+		writer.WriteString(fmt.Sprintf("lxc.id_map = u 0 %d %d\n", firstUid, containerUid))
+		writer.WriteString(fmt.Sprintf("lxc.id_map = g 0 %d %d\n", firstGid, containerGid))
 
 		//now the user ID is mapped 1:1
-		writer.WriteString(fmt.Sprintf("lxc.id_map = u %s %s 1\n", currUser.Uid, currUser.Uid))
-		writer.WriteString(fmt.Sprintf("lxc.id_map = g %s %s 1\n", currUser.Gid, currUser.Gid))
+		writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d 1\n", containerUid, uid))
+		writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d 1\n", containerGid, gid))
 
 		//and the rest
-		writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d %d\n", uid+1, firstUid+uid+1, uidRange-uid-1))
-		writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d %d\n", gid+1, firstGid+gid+1, gidRange-gid-1))
+		writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d %d\n", containerUid+1, firstUid+containerUid+1, uidRange-containerUid-1))
+		writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d %d\n", containerGid+1, firstGid+containerGid+1, gidRange-containerGid-1))
 		writer.Flush()
 	}
 
 	return confFileName, nil
 }
 
-func (c *createCmd) registerUserInContainer(container *lxc.Container) error {
+func (c *createCmd) registerUserInContainer(container *lxc.Container, containerUserId uint, containerUserName string) error {
 
 	currUser, err := user.Current()
 	if err != nil {
@@ -279,6 +292,11 @@ func (c *createCmd) registerUserInContainer(container *lxc.Container) error {
 		return err
 	}
 
+	err = container.SetConfigItem("lxc.mount.entry", "/media media none bind,create=dir 0 0")
+	if err != nil {
+		return err
+	}
+
 	err = container.SaveConfigFile(container.ConfigFileName())
 	if err != nil {
 		return err
@@ -288,49 +306,62 @@ func (c *createCmd) registerUserInContainer(container *lxc.Container) error {
 	if err != nil {
 		return err
 	}
+	/*
+		fmt.Printf("Creating groups\n")
+		for _, group := range requiredGroups {
+			mustWork := group.Gid == pw.Gid
 
-	fmt.Printf("Creating groups\n")
-	for _, group := range requiredGroups {
-		mustWork := group.Gid == pw.Gid
+			fmt.Printf("Creating group %s\n", group.Name)
 
-		fmt.Printf("Creating group %s\n", group.Name)
-
-		cmd := exec.Command("lxc-attach", "-P", lm_sdk_tools.LMTargetPath(), "-n", container.Name(),
-			"--", "groupadd", "-g", strconv.FormatUint(uint64(group.Gid), 10), group.Name)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Start()
-		if err := cmd.Wait(); err != nil {
-			print("GroupAdd returned error\n")
-			if exiterr, ok := err.(*exec.ExitError); ok {
-				if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-					//exit code of 9 means the group exists already
-					//which we will treat as success
-					if status.ExitStatus() != 9 {
-						if mustWork {
-							return fmt.Errorf("Could not create primary group")
+			cmd := exec.Command("lxc-attach", "-P", lm_sdk_tools.LMTargetPath(), "-n", container.Name(),
+				"--", "groupadd", "-g", strconv.FormatUint(uint64(group.Gid), 10), group.Name)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err = cmd.Start()
+			if err := cmd.Wait(); err != nil {
+				print("GroupAdd returned error\n")
+				if exiterr, ok := err.(*exec.ExitError); ok {
+					if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+						//exit code of 9 means the group exists already
+						//which we will treat as success
+						if status.ExitStatus() != 9 {
+							if mustWork {
+								return fmt.Errorf("Could not create primary group")
+							}
+							continue
 						}
-						continue
 					}
+				} else {
+					return fmt.Errorf("Failed to add the group %s. error: %v", group.Name, err)
 				}
-			} else {
-				return fmt.Errorf("Failed to add the group %s. error: %v", group.Name, err)
 			}
 		}
-	}
 
-	fmt.Printf("Creating user %s\n", pw.LoginName)
+		fmt.Printf("Creating user %s\n", pw.LoginName)
+
+		command := []string{
+			"-P", lm_sdk_tools.LMTargetPath(), "-n", container.Name(), "--",
+			"useradd", "--no-create-home",
+			"-u", strconv.FormatUint(uint64(pw.Uid), 10),
+			"--gid", strconv.FormatUint(uint64(pw.Gid), 10),
+			"--home-dir", pw.Dir,
+			"-s", "/bin/bash",
+			"-p", "*",
+			"--groups", "video",
+			pw.LoginName,
+		}
+
+		cmd := exec.Command("lxc-attach", command...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+	*/
 
 	command := []string{
 		"-P", lm_sdk_tools.LMTargetPath(), "-n", container.Name(), "--",
-		"useradd", "--no-create-home",
-		"-u", strconv.FormatUint(uint64(pw.Uid), 10),
-		"--gid", strconv.FormatUint(uint64(pw.Gid), 10),
-		"--home-dir", pw.Dir,
-		"-s", "/bin/bash",
-		"-p", "*",
-		"--groups", "video",
-		pw.LoginName,
+		"sed", "-i",
+		fmt.Sprintf("s;/home/%s;/home/%s;", containerUserName, pw.LoginName),
+		"/etc/passwd",
 	}
 
 	cmd := exec.Command("lxc-attach", command...)

@@ -204,6 +204,39 @@ func ContainerRootfs(container string) (string, error) {
 	return c.ConfigItem("lxc.rootfs")[0], nil
 }
 
+func toLmContainer(c *lxc.Container) (*LMTargetContainer, error) {
+	if !c.Defined() {
+		return nil, fmt.Errorf("Container %s does not exist", c.Name())
+	}
+
+	//read config file
+	conf, err := ioutil.ReadFile(c.ConfigFileName() + "-lm")
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read container config file: %s", err)
+	}
+
+	lmContainer := LMTargetContainer{
+		Container: nil,
+	}
+
+	err = json.Unmarshal(conf, &lmContainer)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to parse container config file: %s", err)
+	}
+
+	lmContainer.Name = c.Name()
+	lmContainer.Container = c
+	return &lmContainer, nil
+}
+
+func LoadLMContainer(container string) (*LMTargetContainer, error) {
+	c, err := lxc.NewContainer(container, LMTargetPath())
+	if err != nil {
+		return nil, fmt.Errorf("ERROR: %s", err.Error())
+	}
+	return toLmContainer(c)
+}
+
 func FindLMTargets() ([]LMTargetContainer, error) {
 
 	all_containers := lxc.Containers(LMTargetPath())
@@ -211,25 +244,13 @@ func FindLMTargets() ([]LMTargetContainer, error) {
 
 	for _, container := range all_containers {
 
-		//read config file
-		conf, err := ioutil.ReadFile(container.ConfigFileName() + "-lm")
+		lmContainer, err := toLmContainer(&container)
 		if err != nil {
-			return nil, fmt.Errorf("Unable to read container config file: %s", err)
+			return nil, err
 		}
 
-		lmContainer := LMTargetContainer{
-			Container: nil,
-		}
-
-		err = json.Unmarshal(conf, &lmContainer)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to parse container config file: %s", err)
-		}
-
-		lmContainer.Name = container.Name()
-		lmContainer.Container = &container
 		lmTargets = append(lmTargets,
-			lmContainer,
+			*lmContainer,
 		)
 	}
 
@@ -484,4 +505,14 @@ func EnsureDirExistsWithPermissions(dirName string, ownerUid, ownerGid int, perm
 	}
 
 	return nil
+}
+
+func DistroToUserIds(distro string) (uint32, uint32, string, error) {
+	if distro == "link-motion-autoos" {
+		return 10000, 1001, "org.c4c.ui_cluster", nil
+	} else if distro == "link-motion-ivios" {
+		return 20000, 1002, "system", nil
+	} else {
+		return 0, 0, "", fmt.Errorf("Unknown distro: %s", distro)
+	}
 }

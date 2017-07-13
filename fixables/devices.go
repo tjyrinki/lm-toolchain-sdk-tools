@@ -47,7 +47,7 @@ func (c *DevicesFixable) run(container *lxc.Container, doFix bool) error {
 			continue
 		}
 
-		if _, err := os.Stat(mount[0]); os.IsNotExist(err) {
+		if _, err := os.Stat(mount[0]); os.IsNotExist(err) && mount[2] != "tmpfs" {
 			errorFound = true
 			brokenDevices = append(brokenDevices, mount[0])
 		} else {

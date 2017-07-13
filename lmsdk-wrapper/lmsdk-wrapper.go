@@ -92,19 +92,19 @@ func executeCommand() int {
 		return 1
 	}
 
-	c, err := lxc.NewContainer(container, lm_sdk_tools.LMTargetPath())
+	c, err := lm_sdk_tools.LoadLMContainer(container)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not connect to the Container: %v\n", err)
 		return 1
 	}
 
-	switch c.State() {
+	switch c.Container.State() {
 	case lxc.STARTING:
-		c.Wait(lxc.RUNNING, time.Second*5)
+		c.Container.Wait(lxc.RUNNING, time.Second*5)
 	case lxc.STOPPING:
-		c.Wait(lxc.STOPPED, time.Second*5)
+		c.Container.Wait(lxc.STOPPED, time.Second*5)
 	case lxc.FREEZING:
-		c.Wait(lxc.FROZEN, time.Second*5)
+		c.Container.Wait(lxc.FROZEN, time.Second*5)
 	case lxc.ABORTING:
 		fallthrough
 	case lxc.THAWED:
@@ -112,8 +112,8 @@ func executeCommand() int {
 		return 1
 	}
 
-	if c.State() != lxc.RUNNING {
-		err = c.Start()
+	if c.Container.State() != lxc.RUNNING {
+		err = c.Container.Start()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error while starting the container: %v\n", err)
 			return 1
@@ -186,7 +186,7 @@ func executeCommand() int {
 		for {
 			sig := <-ch
 
-			c.RunCommandStatus([]string{
+			c.Container.RunCommandStatus([]string{
 				"/bin/bash",
 				"-c",
 				fmt.Sprintf("kill -%d -$(ps -o pgid= `cat %s` | grep -o '[0-9]*')", sig, pidfile),
@@ -211,16 +211,23 @@ func executeCommand() int {
 	go mapFunc(stdout_r, os.Stdout, &wg)
 	go mapFunc(stderr_r, os.Stderr, &wg)
 
+	cid, cgid, _, err := lm_sdk_tools.DistroToUserIds(c.Distribution)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v", err)
+		return 1
+	}
+
 	options := lxc.DefaultAttachOptions
 	options.ClearEnv = true
-	options.UID = os.Getuid()
-	options.GID = os.Getgid()
+	options.UID = int(cid)
+	options.GID = int(cgid)
 	options.Cwd, _ = os.Getwd()
 	options.StdinFd = os.Stdin.Fd()
 	options.StderrFd = stderr_w.Fd()
 	options.StdoutFd = stdout_w.Fd()
 
-	exitCode, cerr := c.RunCommandStatus(
+	exitCode, cerr := c.Container.RunCommandStatus(
 		[]string{"/bin/bash", "-c", program},
 		options)
 
