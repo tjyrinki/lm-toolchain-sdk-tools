@@ -34,8 +34,6 @@ import (
 	"sync"
 	"syscall"
 
-	"time"
-
 	"github.com/pborman/uuid"
 	"gopkg.in/lxc/go-lxc.v2"
 	"link-motion.com/lm-sdk-tools"
@@ -98,26 +96,10 @@ func executeCommand() int {
 		return 1
 	}
 
-	switch c.Container.State() {
-	case lxc.STARTING:
-		c.Container.Wait(lxc.RUNNING, time.Second*5)
-	case lxc.STOPPING:
-		c.Container.Wait(lxc.STOPPED, time.Second*5)
-	case lxc.FREEZING:
-		c.Container.Wait(lxc.FROZEN, time.Second*5)
-	case lxc.ABORTING:
-		fallthrough
-	case lxc.THAWED:
-		fmt.Fprintf(os.Stderr, "Container in unsupported state")
+	err = lm_sdk_tools.BootContainerSync(c)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not start the Container: %v\n", err)
 		return 1
-	}
-
-	if c.Container.State() != lxc.RUNNING {
-		err = c.Container.Start()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while starting the container: %v\n", err)
-			return 1
-		}
 	}
 
 	cmdName := filepath.Base(os.Args[0])

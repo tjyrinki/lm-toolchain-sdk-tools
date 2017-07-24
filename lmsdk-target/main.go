@@ -61,6 +61,7 @@ var commands = map[string]command{
 	"initialized": &initializedCmd{},
 	"autosetup":   &autosetupCmd{},
 	"autofix":     &autofixCmd{},
+	"rpmbuild":    &rpmbuildCmd{},
 	//"set" : &setCmd{},
 }
 

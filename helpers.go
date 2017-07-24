@@ -21,6 +21,7 @@
 package lm_sdk_tools
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -29,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"bufio"
 
@@ -140,7 +142,27 @@ func GetOrCreateIdRange(user string, fileName string, doCreate bool) (uint32, ui
 
 }
 
-func BootContainerSync(name string) error {
+func BootContainerSync(container *LMTargetContainer) error {
+	switch container.Container.State() {
+	case lxc.STARTING:
+		container.Container.Wait(lxc.RUNNING, time.Second*5)
+	case lxc.STOPPING:
+		container.Container.Wait(lxc.STOPPED, time.Second*5)
+	case lxc.FREEZING:
+		container.Container.Wait(lxc.FROZEN, time.Second*5)
+	case lxc.ABORTING:
+		fallthrough
+	case lxc.THAWED:
+		return fmt.Errorf("Container in unsupported state")
+	}
+
+	if container.Container.State() != lxc.RUNNING {
+		err := container.Container.Start()
+		if err != nil {
+			return fmt.Errorf("Error while starting the container: %v\n", err)
+		}
+		container.Container.Wait(lxc.RUNNING, time.Second*5)
+	}
 	return nil
 }
 
@@ -515,4 +537,62 @@ func DistroToUserIds(distro string) (uint32, uint32, string, error) {
 	} else {
 		return 0, 0, "", fmt.Errorf("Unknown distro: %s", distro)
 	}
+}
+
+func RunInContainer(c *LMTargetContainer, runAsRoot bool, env []string, program string, stdoutFd uintptr, stderrFd uintptr) (int, error) {
+	cid, cgid, _, err := DistroToUserIds(c.Distribution)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v", err)
+		return 1, nil
+	}
+
+	options := lxc.DefaultAttachOptions
+	options.ClearEnv = true
+	if runAsRoot {
+		options.UID = int(0)
+		options.GID = int(0)
+	} else {
+		options.UID = int(cid)
+		options.GID = int(cgid)
+	}
+	options.Env = env
+	options.Cwd, _ = os.Getwd()
+	options.StdinFd = os.Stdin.Fd()
+
+	if stdoutFd >= 0 {
+		options.StdoutFd = stdoutFd
+	} else {
+		options.StdoutFd = os.Stdout.Fd()
+	}
+	if stderrFd >= 0 {
+		options.StderrFd = stderrFd
+	} else {
+		options.StderrFd = os.Stderr.Fd()
+	}
+	options.StderrFd = os.Stderr.Fd()
+
+	return c.Container.RunCommandStatus(
+		[]string{"/bin/bash", "-c", program},
+		options)
+
+}
+
+func RunInContainerOuput(c *LMTargetContainer, runAsRoot bool, env []string, program string) (string, int, error) {
+
+	out_r, out_w, err := os.Pipe()
+	if err != nil {
+		return "", 1, fmt.Errorf("Error creating the output pipe: %v\n", err)
+	}
+
+	defer out_r.Close()
+
+	exitCode, err := RunInContainer(c, runAsRoot, env, program, out_w.Fd(), out_w.Fd())
+	out_w.Close()
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(out_r)
+	s := buf.String() // Does a complete copy of the bytes in the buffer.
+
+	return s, exitCode, err
 }
