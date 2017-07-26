@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -49,7 +50,20 @@ func (c *imagesCmd) flags() {
 
 func findRelevantImages() ([]imageDesc, error) {
 
-	resp, err := http.Get("http://tre-ci.build.link-motion.com/sysroots/meta/1.0/index-user")
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", "http://tre-ci.build.link-motion.com/sysroots/meta/1.0/index-user", nil)
+
+	if len(os.Getenv("LM_USERNAME")) > 0 {
+		req.SetBasicAuth(
+			os.Getenv("LM_USERNAME"),
+			os.Getenv("LM_PASSWORD"),
+		)
+	}
+
+	resp, err := client.Do(req)
+
+	//resp, err := http.Get("http://tre-ci.build.link-motion.com/sysroots/meta/1.0/index-user")
 	if err != nil {
 		return nil, err
 	}

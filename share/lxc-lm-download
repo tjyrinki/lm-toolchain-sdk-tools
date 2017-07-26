@@ -47,6 +47,7 @@ DOWNLOAD_URL=
 DOWNLOAD_USE_CACHE="false"
 DOWNLOAD_VALIDATE="false"
 DOWNLOAD_VARIANT="default"
+DOWNLOADER_PATH=
 
 LXC_MAPPED_GID=
 LXC_MAPPED_UID=
@@ -70,8 +71,8 @@ cleanup() {
 }
 
 wget_wrapper() {
-    for i in $(seq 3); do
-        if wget $@; then
+    for i in $(seq 3); do   
+        if ${DOWNLOADER_PATH} $@; then
             return 0
         fi
     done
@@ -80,8 +81,8 @@ wget_wrapper() {
 }
 
 download_file() {
-    if ! wget_wrapper -T 30 -q http://${DOWNLOAD_SERVER}/$1 -O $2 >/dev/null 2>&1; then
-        if ! wget_wrapper -T 30 -q http://${DOWNLOAD_SERVER}/$1 -O $2 >/dev/null 2>&1; then
+    if ! wget_wrapper -url http://${DOWNLOAD_SERVER}/$1 -filename $2 >/dev/null 2>&1; then
+        if ! wget_wrapper -url http://${DOWNLOAD_SERVER}/$1 -filename $2 >/dev/null 2>&1; then
             if [ "$3" = "noexit" ]; then
                 return 1
             else
@@ -205,6 +206,7 @@ Optional arguments:
 [ --no-validate ]: Disable GPG validation (not recommended)
 [ --flush-cache ]: Flush the local copy (if present)
 [ --force-cache ]: Force the use of the local copy even if expired
+[ --downloader <downloader> ]: Path to the lmsdk-download binary
 
 LXC internal arguments (do not pass manually!):
 [ --name <name> ]: The container name
@@ -218,14 +220,12 @@ EOF
 
 options=$(getopt -o d:r:a:hl -l dist:,release:,arch:,help,list,variant:,\
 server:,keyid:,keyserver:,no-validate,flush-cache,force-cache,name:,path:,\
-rootfs:,mapped-uid:,mapped-gid: -- "$@")
+rootfs:,mapped-uid:,mapped-gid:,downloader: -- "$@")
 
 if [ $? -ne 0 ]; then
     usage
     exit 1
 fi
-
-echo "Script args: $@"
 
 eval set -- "$options"
 
@@ -248,18 +248,24 @@ while :; do
         --rootfs)           LXC_ROOTFS=$2; shift 2;;
         --mapped-uid)       LXC_MAPPED_UID=$2; shift 2;;
         --mapped-gid)       LXC_MAPPED_GID=$2; shift 2;;
+        --downloader)       DOWNLOADER_PATH=$2; shift 2;;
         *)                  break;;
     esac
 done
 
 
 # Check for required binaries
-for bin in tar xz wget; do
+for bin in tar xz; do
     if ! type $bin >/dev/null 2>&1; then
         echo "ERROR: Missing required tool: $bin" 1>&2
         exit 1
     fi
 done
+
+if [ -z "${DOWNLOADER_PATH}" ]; then
+    echo "ERROR: Need to specify the path to lm-download" 1>&2
+    exit 1
+fi
 
 # Check for GPG
 if [ "$DOWNLOAD_VALIDATE" = "true" ]; then

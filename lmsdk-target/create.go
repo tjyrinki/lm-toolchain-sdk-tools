@@ -101,7 +101,7 @@ func (c *createCmd) run(args []string) error {
 
 	container.SetVerbosity(lxc.Verbose)
 
-	template := "/usr/share/lm-sdk/lxc-lm-download"
+	template := "/opt/lm-sdk/bin/lxc-lm-download"
 	execname, err := os.Executable()
 	templateAlt := path.Join(path.Dir(execname), "lxc-lm-download")
 
@@ -109,6 +109,11 @@ func (c *createCmd) run(args []string) error {
 		template = templateAlt
 	} else if _, err := os.Stat(template); os.IsNotExist(err) {
 		return fmt.Errorf("The lxc-lm-download was not found on the system")
+	}
+
+	downloader := path.Join(path.Dir(template), "lmsdk-download")
+	if _, err := os.Stat(downloader); os.IsNotExist(err) {
+		return fmt.Errorf("The lmsdk-download tool was not found on the system")
 	}
 
 	options := lxc.TemplateOptions{
@@ -121,12 +126,12 @@ func (c *createCmd) run(args []string) error {
 		DisableGPGValidation: true,
 	}
 
+	options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--downloader=%s", downloader))
+
 	containerUserId, _, containerUserName, err := lm_sdk_tools.DistroToUserIds(c.distro)
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("Selected options: %v\n", options)
 
 	if err := container.Create(options); err != nil {
 		lm_sdk_tools.RemoveContainerSync(container.Name())
