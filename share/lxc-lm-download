@@ -39,7 +39,7 @@ DOWNLOAD_LIST_IMAGES="false"
 DOWNLOAD_MODE="system"
 DOWNLOAD_READY_GPG="false"
 DOWNLOAD_RELEASE=
-DOWNLOAD_SERVER="sdk.link-motion.com/images/"
+DOWNLOAD_SERVER="https://sdk.link-motion.com/images/"
 DOWNLOAD_SHOW_GPG_WARNING="true"
 DOWNLOAD_SHOW_HTTP_WARNING="true"
 DOWNLOAD_TARGET="system"
@@ -81,12 +81,12 @@ wget_wrapper() {
 }
 
 download_file() {
-    if ! wget_wrapper -url http://${DOWNLOAD_SERVER}/$1 -filename $2 >/dev/null 2>&1; then
-        if ! wget_wrapper -url http://${DOWNLOAD_SERVER}/$1 -filename $2 >/dev/null 2>&1; then
+    if ! wget_wrapper -url ${DOWNLOAD_SERVER}/$1 -filename $2 >/dev/null 2>&1; then
+        if ! wget_wrapper -url ${DOWNLOAD_SERVER}/$1 -filename $2 >/dev/null 2>&1; then
             if [ "$3" = "noexit" ]; then
                 return 1
             else
-                echo "ERROR: Failed to download http://${DOWNLOAD_SERVER}/$1" 1>&2
+                echo "ERROR: Failed to download ${DOWNLOAD_SERVER}/$1" 1>&2
                 exit 1
             fi
         elif [ "$DOWNLOAD_SHOW_HTTP_WARNING" = "true" ]; then
@@ -102,7 +102,7 @@ download_sig() {
     if ! download_file $1 $2 noexit; then
         if [ "$DOWNLOAD_VALIDATE" = "true" ]; then
             if [ "$3" = "normal" ]; then
-                echo "ERROR: Failed to download http://${DOWNLOAD_SERVER}/$1" 1>&2
+                echo "ERROR: Failed to download ${DOWNLOAD_SERVER}/$1" 1>&2
                 exit 1
             else
                 return 1

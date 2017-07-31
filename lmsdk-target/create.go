@@ -132,6 +132,11 @@ func (c *createCmd) run(args []string) error {
 
 	options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--downloader=%s", downloader))
 
+	if len(os.Getenv(lm_sdk_tools.LmImageServerEnvVar)) > 0 {
+		serverName := os.Getenv(lm_sdk_tools.LmImageServerEnvVar)
+		options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--server=%s", serverName))
+	}
+
 	containerUserId, _, containerUserName, err := lm_sdk_tools.DistroToUserIds(c.distro)
 	if err != nil {
 		return err

@@ -52,6 +52,7 @@ type LMTargetContainer struct {
 
 const LxcBridgeFile = "/etc/default/lxc-net"
 const LxcUsernetFile = "/etc/lxc/lxc-usernet"
+const LmImageServerEnvVar = "LM_IMAGE_SERVER"
 
 func LMTargetPath() string {
 	user, err := LxcContainerUser()

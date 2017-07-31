@@ -26,6 +26,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"link-motion.com/lm-sdk-tools"
 )
 
 type imageDesc struct {
@@ -52,7 +54,13 @@ func findRelevantImages() ([]imageDesc, error) {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", "https://sdk.link-motion.com/images/meta/1.0/index-user", nil)
+	url := "https://sdk.link-motion.com/images/meta/1.0/index-user"
+	if len(os.Getenv(lm_sdk_tools.LmImageServerEnvVar)) > 0 {
+		serverName := os.Getenv(lm_sdk_tools.LmImageServerEnvVar)
+		url = fmt.Sprintf("%s/meta/1.0/index-user", serverName)
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
 
 	if len(os.Getenv("LM_USERNAME")) > 0 {
 		req.SetBasicAuth(
@@ -62,8 +70,6 @@ func findRelevantImages() ([]imageDesc, error) {
 	}
 
 	resp, err := client.Do(req)
-
-	//resp, err := http.Get("http://tre-ci.build.link-motion.com/sysroots/meta/1.0/index-user")
 	if err != nil {
 		return nil, err
 	}
