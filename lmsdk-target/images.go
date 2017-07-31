@@ -52,7 +52,7 @@ func findRelevantImages() ([]imageDesc, error) {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("GET", "http://tre-ci.build.link-motion.com/sysroots/meta/1.0/index-user", nil)
+	req, err := http.NewRequest("GET", "https://sdk.link-motion.com/images/meta/1.0/index-user", nil)
 
 	if len(os.Getenv("LM_USERNAME")) > 0 {
 		req.SetBasicAuth(
