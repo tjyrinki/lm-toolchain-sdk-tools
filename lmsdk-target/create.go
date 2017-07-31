@@ -36,6 +36,8 @@ import (
 
 	"io/ioutil"
 
+	"time"
+
 	"gopkg.in/lxc/go-lxc.v2"
 	"launchpad.net/gnuflag"
 	"link-motion.com/lm-sdk-tools"
@@ -50,12 +52,13 @@ type createCmd struct {
 	name              string
 	createSupGroups   bool
 	enableUpdates     bool
+	keepOnError       bool
 }
 
 func (c *createCmd) usage() string {
 	return `Creates a new Link Motion SDK build target.
 
-lmsdk-target create -n NAME -d DISTRO -v VERSION -a ARCH
+lmsdk-target create -n NAME -d DISTRO -v VERSION -a ARCH -b TARGETARCH
 `
 }
 
@@ -70,6 +73,7 @@ func (c *createCmd) flags() {
 	gnuflag.StringVar(&c.version, "v", requiredString, "Image release version")
 	gnuflag.StringVar(&c.name, "n", requiredString, "name of the container")
 	gnuflag.BoolVar(&c.createSupGroups, "g", false, "Also try to create the users supplementary groups")
+	gnuflag.BoolVar(&c.keepOnError, "keep-on-error", false, "Do not remove then container when creation fails")
 }
 
 func (c *createCmd) run(args []string) error {
@@ -134,18 +138,24 @@ func (c *createCmd) run(args []string) error {
 	}
 
 	if err := container.Create(options); err != nil {
-		lm_sdk_tools.RemoveContainerSync(container.Name())
+		if !c.keepOnError {
+			lm_sdk_tools.RemoveContainerSync(container.Name())
+		}
 		return fmt.Errorf("ERROR: %v", err.Error())
 	}
 
 	if err = c.registerUserInContainer(container, uint(containerUserId), containerUserName); err != nil {
-		lm_sdk_tools.RemoveContainerSync(container.Name())
+		if !c.keepOnError {
+			lm_sdk_tools.RemoveContainerSync(container.Name())
+		}
 		return fmt.Errorf("ERROR: %v", err.Error())
 	}
 
 	tools := fixables.NewToolsFixable()
 	if err = tools.FixContainer(c.name); err != nil {
-		lm_sdk_tools.RemoveContainerSync(container.Name())
+		if !c.keepOnError {
+			lm_sdk_tools.RemoveContainerSync(container.Name())
+		}
 		return fmt.Errorf("ERROR: %v", err.Error())
 	}
 
@@ -161,13 +171,17 @@ func (c *createCmd) run(args []string) error {
 
 	lmConfig, err := json.MarshalIndent(&lmContainer, "  ", "  ")
 	if err != nil {
-		lm_sdk_tools.RemoveContainerSync(container.Name())
+		if !c.keepOnError {
+			lm_sdk_tools.RemoveContainerSync(container.Name())
+		}
 		return fmt.Errorf("Unable to marshall config-lm file: %v", err.Error())
 	}
 
 	err = ioutil.WriteFile(container.ConfigFileName()+"-lm", lmConfig, 0664)
 	if err != nil {
-		lm_sdk_tools.RemoveContainerSync(container.Name())
+		if !c.keepOnError {
+			lm_sdk_tools.RemoveContainerSync(container.Name())
+		}
 		return fmt.Errorf("Unable to write config-lm file: %v", err.Error())
 	}
 
@@ -281,7 +295,7 @@ func (c *createCmd) registerUserInContainer(container *lxc.Container, containerU
 	if container.State() != lxc.STOPPED {
 		err = container.Stop()
 		if err != nil {
-			return err
+			return fmt.Errorf("Stopping the container failed: %s", err)
 		}
 	}
 
@@ -307,10 +321,28 @@ func (c *createCmd) registerUserInContainer(container *lxc.Container, containerU
 		return err
 	}
 
-	err = container.Start()
-	if err != nil {
-		return err
+	retry := 0
+	retryMax := 5
+	lastErr := error(nil)
+	for retry <= retryMax {
+		retry++
+		fmt.Printf("Attempting to start the container (%d/%d)\n", retry, retryMax)
+
+		lastErr = container.Start()
+		if lastErr == nil {
+			break
+		} else {
+			fmt.Printf("Starting the container failed.")
+			if retry < retryMax {
+				time.Sleep(1 * time.Second)
+			}
+		}
 	}
+
+	if lastErr != nil {
+		return fmt.Errorf("All attempts to start the container failed, last error: %v", lastErr)
+	}
+
 	/*
 		fmt.Printf("Creating groups\n")
 		for _, group := range requiredGroups {
