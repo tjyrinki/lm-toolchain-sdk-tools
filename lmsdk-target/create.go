@@ -306,17 +306,17 @@ func (c *createCmd) registerUserInContainer(container *lxc.Container, containerU
 
 	//add the home dir
 	homedir := pw.Dir
-	err = container.SetConfigItem("lxc.mount.entry", fmt.Sprintf("%s %s none bind,create=dir 0 0", homedir, homedir[1:]))
+	err = container.SetConfigItem("lxc.mount.entry", fmt.Sprintf("%s %s none rbind,create=dir 0 0", homedir, homedir[1:]))
 	if err != nil {
 		return err
 	}
 
-	err = container.SetConfigItem("lxc.mount.entry", "/tmp tmp none bind,create=dir 0 0")
+	err = container.SetConfigItem("lxc.mount.entry", "/tmp tmp none rbind,create=dir 0 0")
 	if err != nil {
 		return err
 	}
 
-	err = container.SetConfigItem("lxc.mount.entry", "/media media none bind,create=dir 0 0")
+	err = container.SetConfigItem("lxc.mount.entry", "/media media none rbind,create=dir 0 0")
 	if err != nil {
 		return err
 	}
