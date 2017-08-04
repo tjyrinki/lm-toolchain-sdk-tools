@@ -41,6 +41,7 @@ type rpmbuildCmd struct {
 	tarballName string
 	jobs        int
 	installDeps bool
+	upgrade     bool
 }
 
 func (c *rpmbuildCmd) usage() string {
@@ -54,6 +55,7 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.tarballName, "t", "", "tarball name")
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
+	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 }
 
 /**
@@ -303,6 +305,24 @@ func (c *rpmbuildCmd) run(args []string) error {
 	err = lm_sdk_tools.BootContainerSync(container)
 	if err != nil {
 		return err
+	}
+
+	if c.upgrade {
+		me, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read path of lmsdk-target binary: %v\n", err)
+			return err
+		}
+
+		comm := exec.Command(me, "upgrade", c.container)
+		comm.Stdout = os.Stdout
+		comm.Stderr = os.Stderr
+
+		err = comm.Run()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Upgrading the target failed.\n")
+			return err
+		}
 	}
 
 	//check if the project directory exists

@@ -45,7 +45,7 @@ func (c *upgradeCmd) run(args []string) error {
 
 	execArgs := []string{
 		args[0],
-		"/bin/bash", "-c", "zypper ref && zypper up -ly",
+		"/bin/bash", "-c", "zypper --non-interactive ref && zypper --non-interactive up -y",
 	}
 
 	return exec.run(execArgs)
