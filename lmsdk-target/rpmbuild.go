@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -35,13 +36,14 @@ import (
 )
 
 type rpmbuildCmd struct {
-	container   string
-	projectDir  string
-	specfile    string
-	tarballName string
-	jobs        int
-	installDeps bool
-	upgrade     bool
+	container       string
+	projectDir      string
+	specfile        string
+	tarballName     string
+	outputDirectory string
+	jobs            int
+	installDeps     bool
+	upgrade         bool
 }
 
 func (c *rpmbuildCmd) usage() string {
@@ -54,6 +56,7 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.specfile, "s", "", "specfile location")
 	gnuflag.StringVar(&c.tarballName, "t", "", "tarball name")
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
+	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where rpm files are placed")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 }
@@ -467,6 +470,21 @@ func (c *rpmbuildCmd) run(args []string) error {
 
 	if exitCode != 0 {
 		return fmt.Errorf("The rpmbuild command failed")
+	}
+
+	if len(c.outputDirectory) > 0 {
+		if _, err = os.Stat(c.outputDirectory); err != nil {
+			fmt.Fprintf(os.Stderr, "Can not access output directory.\n")
+			return err
+		}
+
+		fmt.Printf("Copying results from to %s\n", c.outputDirectory)
+		command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*"), c.outputDirectory)
+		_, err = exec.Command("bash", "-c", command).Output()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
+			return err
+		}
 	}
 
 	return nil
