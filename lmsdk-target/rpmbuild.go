@@ -80,10 +80,10 @@ func (c *rpmbuildCmd) rpmQuery(query string, specfile string, container *lm_sdk_
 		return "", fmt.Errorf("Failed to query information from the spec file")
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("Failed to query information from the spec file\n%s", output)
+		return "", fmt.Errorf("Failed to query information from the spec file\n%s", output[1])
 	}
 
-	return output, nil
+	return output[0], nil
 }
 
 /**
@@ -196,12 +196,12 @@ func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sd
 
 	output, exitCode, err := lm_sdk_tools.RunInContainerOuput(container, false, envVars, command)
 	if err != nil || exitCode != 0 {
-		return fmt.Errorf("Failed to query build dependencies from the spec file. %s\n", output)
+		return fmt.Errorf("Failed to query build dependencies from the spec file. %s\n", output[1])
 	}
 
 	//the list of packages we need to install
 	var packages []string
-	for _, buildreq := range strings.Split(output, "\n") {
+	for _, buildreq := range strings.Split(output[0], "\n") {
 
 		if len(buildreq) == 0 {
 			continue
@@ -210,10 +210,10 @@ func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sd
 		zyppComm := fmt.Sprintf("zypper -x wp \"%s\"", buildreq)
 		output, exitCode, err := lm_sdk_tools.RunInContainerOuput(container, false, envVars, zyppComm)
 		if err != nil || exitCode != 0 {
-			return fmt.Errorf("Failed to query zypper for the provider of: %s. %s\n", buildreq, output)
+			return fmt.Errorf("Failed to query zypper for the provider of: %s. %s\n", buildreq, output[1])
 		}
 
-		b := bytes.NewBufferString(output)
+		b := bytes.NewBufferString(output[0])
 
 		alreadyProvided := false
 		decoder := xml.NewDecoder(b)
@@ -283,7 +283,7 @@ func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sd
 			fmt.Sprintf("zypper --non-interactive install %s", strings.Join(packages, " ")),
 		)
 		if err != nil || exitCode != 0 {
-			return fmt.Errorf("Failed to install packages.\n%s\n", output)
+			return fmt.Errorf("Failed to install packages.\n%s\n", output[1])
 		}
 	}
 	return nil
@@ -454,7 +454,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 	//now finally build the packages
 	envVars := []string{
 		"LC_ALL=C",
-		fmt.Sprintf("MAKEFLAGS=-j %s", c.jobs),
+		fmt.Sprintf("MAKEFLAGS=-j %d", c.jobs),
 	}
 
 	command := fmt.Sprintf("rpmbuild -bb %s --define \"_topdir %s\" --target %s",

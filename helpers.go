@@ -553,11 +553,18 @@ func RunInContainer(c *LMTargetContainer, runAsRoot bool, env []string, program 
 	if runAsRoot {
 		options.UID = int(0)
 		options.GID = int(0)
+		env = append(env, "HOME=/root")
 	} else {
 		options.UID = int(cid)
 		options.GID = int(cgid)
+		currUser, err := user.Current()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to query current user")
+			return 0, err
+		}
+		env = append(env, fmt.Sprintf("HOME=%s", currUser.HomeDir))
 	}
-	options.Env = env
+
 	options.Cwd, _ = os.Getwd()
 	options.StdinFd = os.Stdin.Fd()
 
@@ -571,29 +578,55 @@ func RunInContainer(c *LMTargetContainer, runAsRoot bool, env []string, program 
 	} else {
 		options.StderrFd = os.Stderr.Fd()
 	}
-	options.StderrFd = os.Stderr.Fd()
+
+	fullcmd := ""
+	//we need to set the env variables right in the command, otherwise the bash --login will override them
+	if len(env) > 0 {
+		envList := ""
+		for _, envVar := range env {
+			envList += "\"" + envVar + "\" "
+		}
+		fullcmd = fmt.Sprintf("env %s ", envList)
+	}
+
+	fullcmd = fullcmd + program
+
+	fmt.Printf("Running command: %s\n", fullcmd)
 
 	return c.Container.RunCommandStatus(
-		[]string{"/bin/bash", "-c", program},
+		[]string{"/bin/bash", "--login", "-c", fullcmd},
 		options)
 
 }
 
-func RunInContainerOuput(c *LMTargetContainer, runAsRoot bool, env []string, program string) (string, int, error) {
+func RunInContainerOuput(c *LMTargetContainer, runAsRoot bool, env []string, program string) ([]string, int, error) {
 
-	out_r, out_w, err := os.Pipe()
+	stdout_r, stdout_w, err := os.Pipe()
 	if err != nil {
-		return "", 1, fmt.Errorf("Error creating the output pipe: %v\n", err)
+		return []string{}, 1, fmt.Errorf("Error creating the stdout output pipe: %v\n", err)
 	}
 
-	defer out_r.Close()
+	stderr_r, stderr_w, err := os.Pipe()
+	if err != nil {
+		return []string{}, 1, fmt.Errorf("Error creating the stderr output pipe: %v\n", err)
+	}
 
-	exitCode, err := RunInContainer(c, runAsRoot, env, program, out_w.Fd(), out_w.Fd())
-	out_w.Close()
+	defer stdout_r.Close()
+	defer stderr_r.Close()
+
+	exitCode, err := RunInContainer(c, runAsRoot, env, program, stdout_w.Fd(), stderr_w.Fd())
+	stdout_w.Close()
+	stderr_w.Close()
+
+	output := make([]string, 2)
 
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(out_r)
-	s := buf.String() // Does a complete copy of the bytes in the buffer.
+	buf.ReadFrom(stdout_r)
+	output[0] = buf.String() // Does a complete copy of the bytes in the buffer.
 
-	return s, exitCode, err
+	buf.Reset()
+	buf.ReadFrom(stderr_r)
+	output[1] = buf.String() // Does a complete copy of the bytes in the buffer.
+
+	return output, exitCode, err
 }

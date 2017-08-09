@@ -99,7 +99,7 @@ func (c *execCmd) run(args []string) error {
 
 		program := ""
 		for _, rcfile := range rcFiles {
-			program += "test -f " + rcfile + " && . " + rcfile + "; "
+			program += "test -f " + rcfile + " && . " + rcfile + " &> /dev/null; "
 		}
 
 		//make sure the working directory is the same
