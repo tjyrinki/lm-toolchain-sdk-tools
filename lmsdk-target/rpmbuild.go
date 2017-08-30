@@ -454,7 +454,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 	//now finally build the packages
 	envVars := []string{
 		"LC_ALL=C",
-		fmt.Sprintf("MAKEFLAGS=-j %d", c.jobs),
+		fmt.Sprintf("MAKEFLAGS=-j%d", c.jobs),
 	}
 
 	command := fmt.Sprintf("rpmbuild -bb %s --define \"_topdir %s\" --target %s",
