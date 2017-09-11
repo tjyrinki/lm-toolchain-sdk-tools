@@ -49,14 +49,14 @@ type rpmbuildCmd struct {
 func (c *rpmbuildCmd) usage() string {
 	return (`Build a rpm in a container build target.
 
-lmsdk-target rpmbuild container <sourcedir> [-t tarballname] [-j threads] [-s specfile]`)
+lmsdk-target rpmbuild container <sourcedir> [-t tarballname] [-j threads] [-s specfile] [-o output directory]\n`)
 }
 
 func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.specfile, "s", "", "specfile location")
 	gnuflag.StringVar(&c.tarballName, "t", "", "tarball name")
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
-	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where rpm files are placed")
+	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are placed")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 }
@@ -482,8 +482,8 @@ func (c *rpmbuildCmd) run(args []string) error {
 			return err
 		}
 
-		fmt.Printf("Copying results from to %s\n", c.outputDirectory)
-		command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*"), c.outputDirectory)
+		fmt.Printf("Copying results from %s to %s\n", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
+		command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
 		_, err = exec.Command("bash", "-c", command).Output()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
