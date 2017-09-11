@@ -44,12 +44,13 @@ type rpmbuildCmd struct {
 	jobs            int
 	installDeps     bool
 	upgrade         bool
+	install         bool
 }
 
 func (c *rpmbuildCmd) usage() string {
 	return (`Build a rpm in a container build target.
 
-lmsdk-target rpmbuild container <sourcedir> [-t tarballname] [-j threads] [-s specfile] [-o output directory]\n`)
+lmsdk-target rpmbuild container <sourcedir> [-t tarballname] [-j threads] [-s specfile] [-o output directory] [--install]\n`)
 }
 
 func (c *rpmbuildCmd) flags() {
@@ -59,6 +60,7 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are placed")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
+	gnuflag.BoolVar(&c.install, "install", false, "Install the result rpm's in the container")
 }
 
 /**
@@ -296,6 +298,11 @@ func (c *rpmbuildCmd) run(args []string) error {
 		os.Exit(1)
 	}
 
+	// Don't allow setting install and output directory at the same time
+	if c.install && len(c.outputDirectory) > 0 {
+		return fmt.Errorf("Can't use install and output directory at the same time!")
+	}
+
 	c.container = args[0]
 	c.projectDir = args[1]
 
@@ -476,7 +483,16 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return fmt.Errorf("The rpmbuild command failed")
 	}
 
+	if c.install {
+		// Create a temporary output directory
+		c.outputDirectory, err = ioutil.TempDir("", "lmsdk-target-temp")
+		if err != nil {
+			return err
+		}
+	}
+
 	if len(c.outputDirectory) > 0 {
+		// Copy build results to output directory
 		if _, err = os.Stat(c.outputDirectory); err != nil {
 			fmt.Fprintf(os.Stderr, "Can not access output directory.\n")
 			return err
@@ -491,5 +507,17 @@ func (c *rpmbuildCmd) run(args []string) error {
 		}
 	}
 
+	if(c.install) {
+		// Install the build results from output directory in container
+		fmt.Printf("Installing RPM's in the container..\n")
+
+		command = fmt.Sprintf("rpm -Uvh --force --ignorearch %s/*.rpm", c.outputDirectory)
+
+		_, err := lm_sdk_tools.RunInContainer(container, true, envVars, command, os.Stdout.Fd(), os.Stderr.Fd())
+		if err != nil {
+			return fmt.Errorf("Failed to execute rpm command in the container: %v", err)
+		}
+		defer os.RemoveAll(c.outputDirectory) // clean up
+	}
 	return nil
 }

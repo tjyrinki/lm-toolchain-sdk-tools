@@ -42,7 +42,7 @@ func (c *execCmd) usage() string {
 
 	return fmt.Sprintf(`Executes a command in the container.
 
-lmsdk-target %s container [command]`, myMode)
+lmsdk-target %s <container> [command]`, myMode)
 }
 
 func (c *execCmd) flags() {
