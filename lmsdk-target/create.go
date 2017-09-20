@@ -88,6 +88,28 @@ func (c *createCmd) run(args []string) error {
 		//return fmt.Errorf("This command needs to run as root")
 	}
 
+	containerDir := path.Join(lm_sdk_tools.LMTargetPath(), c.name)
+	if _, err := os.Stat(containerDir); err == nil {
+		//container dir does exist already
+
+		configFileExists := false
+		lmConfigFileExists := false
+		rootfsDirExists := false
+
+		_, err := os.Stat(path.Join(containerDir, "config"))
+		configFileExists = (err == nil)
+		_, err = os.Stat(path.Join(containerDir, "config-lm"))
+		lmConfigFileExists = (err == nil)
+		_, err = os.Stat(path.Join(containerDir, "rootfs"))
+		rootfsDirExists = (err == nil)
+
+		if !configFileExists || !lmConfigFileExists || !rootfsDirExists {
+			return fmt.Errorf("Broken container exists with the requested name, please remove manually")
+		}
+
+		return fmt.Errorf("Container with requested name exists already")
+	}
+
 	container, err := lxc.NewContainer(c.name, lm_sdk_tools.LMTargetPath())
 	if err != nil {
 		return fmt.Errorf("ERROR: %s", err.Error())
