@@ -142,17 +142,19 @@ func (c *createCmd) run(args []string) error {
 		return fmt.Errorf("The lmsdk-download tool was not found on the system")
 	}
 
+	// -d link-motion-autoos -a i686 -b i686 -v 0.30  -n autoos-x862
+
 	options := lxc.TemplateOptions{
-		Template:             template,
-		Distro:               c.distro,
-		Release:              c.version,
-		Arch:                 c.hostArchitecture,
-		Variant:              c.buildArchitecture,
-		FlushCache:           true,
-		DisableGPGValidation: true,
+		Template:   template,
+		Release:    c.version,
+		Arch:       c.hostArchitecture,
+		FlushCache: true,
 	}
 
+	options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--dist=%s", c.distro))
 	options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--downloader=%s", downloader))
+	options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--variant=%s", c.buildArchitecture))
+	options.ExtraArgs = append(options.ExtraArgs, fmt.Sprintf("--no-validate"))
 
 	if len(os.Getenv(lm_sdk_tools.LmImageServerEnvVar)) > 0 {
 		serverName := os.Getenv(lm_sdk_tools.LmImageServerEnvVar)

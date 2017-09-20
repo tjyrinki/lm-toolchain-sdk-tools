@@ -79,7 +79,7 @@ func (c *autosetupCmd) run(args []string) error {
 			if err != nil {
 				return fmt.Errorf("Could not stop container %s. error: %v.", container.Name, err)
 			}
-			stoppedContainers = append(stoppedContainers, &container)
+			stoppedContainers = append(stoppedContainers, container)
 			fmt.Print(" DONE\n")
 		}
 	}

@@ -267,7 +267,7 @@ func FindLMTargets() ([]LMTargetContainer, error) {
 
 	for _, container := range all_containers {
 
-		lmContainer, err := toLmContainer(&container)
+		lmContainer, err := toLmContainer(container)
 		if err != nil {
 			return nil, err
 		}
