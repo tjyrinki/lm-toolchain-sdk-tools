@@ -361,6 +361,10 @@ func (c *rpmbuildCmd) run(args []string) error {
 	if err != nil {
 		return err
 	}
+
+	//make sure the user in the container can read the directory
+	os.Chmod(builddir, os.ModeDir|0777)
+
 	//defer os.RemoveAll(builddir) // clean up
 
 	fmt.Printf("Build dir: %s\n", builddir)

@@ -42,7 +42,7 @@ type imagesCmd struct {
 }
 
 func (c *imagesCmd) usage() string {
-	return `Shows the available Ubuntu SDK images.
+	return `Shows the available Link-Motion SDK images.
 
 lmsdk-target images`
 }

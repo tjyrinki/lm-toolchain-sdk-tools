@@ -531,13 +531,16 @@ func EnsureDirExistsWithPermissions(dirName string, ownerUid, ownerGid int, perm
 }
 
 func DistroToUserIds(distro string) (uint32, uint32, string, error) {
-	if distro == "link-motion-autoos" {
-		return 10000, 1001, "org.c4c.ui_cluster", nil
-	} else if distro == "link-motion-ivios" {
-		return 20000, 1002, "system", nil
-	} else {
-		return 0, 0, "", fmt.Errorf("Unknown distro: %s", distro)
-	}
+	return 20000, 1002, "system", nil
+	/*
+		if distro == "link-motion-autoos" {
+			return 20000, 1002, "org.c4c.ui_cluster", nil
+		} else if distro == "link-motion-ivios" {
+			return 20000, 1002, "system", nil
+		} else {
+			return 0, 0, "", fmt.Errorf("Unknown distro: %s", distro)
+		}
+	*/
 }
 
 func RunInContainer(c *LMTargetContainer, runAsRoot bool, env []string, program string, stdoutFd uintptr, stderrFd uintptr) (int, error) {

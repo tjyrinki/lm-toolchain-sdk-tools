@@ -224,70 +224,68 @@ func (c *createCmd) GenerateDefaultConfigFile(distro string) (string, error) {
 	}
 
 	confFileName := fmt.Sprintf("%s/lmsdk-%s-default.conf", confDir, distro)
-	if _, err := os.Stat(confFileName); os.IsNotExist(err) {
 
-		fmt.Printf("Creating %s\n", confFileName)
+	fmt.Printf("Creating %s\n", confFileName)
 
-		confFile, err := os.Create(confFileName)
-		if err != nil {
-			return "", err
-		}
-
-		defer confFile.Close()
-		writer := bufio.NewWriter(confFile)
-
-		currUser, err := user.Current()
-		if err != nil {
-			return "", err
-		}
-
-		t_uid, err := strconv.ParseUint(currUser.Uid, 10, 32)
-		if err != nil {
-			return "", err
-		}
-
-		t_gid, err := strconv.ParseUint(currUser.Gid, 10, 32)
-		if err != nil {
-			return "", err
-		}
-
-		containerUid, containerGid, _, err := lm_sdk_tools.DistroToUserIds(c.distro)
-		if err != nil {
-			return "", err
-		}
-
-		uid := uint32(t_uid)
-		gid := uint32(t_gid)
-
-		firstUid, uidRange, err := lm_sdk_tools.GetOrCreateUidRange(false)
-		if err != nil {
-			return "", err
-		}
-
-		firstGid, gidRange, err := lm_sdk_tools.GetOrCreateGuidRange(false)
-		if err != nil {
-			return "", err
-		}
-
-		writer.WriteString("lxc.include = /etc/lxc/default.conf\n")
-
-		if containerUid >= firstUid && containerUid < (firstUid+uidRange) {
-
-		}
-
-		//map the first uid and gid range before the current users id
-		writer.WriteString(fmt.Sprintf("lxc.id_map = u 0 %d %d\n", firstUid, containerUid))
-		writer.WriteString(fmt.Sprintf("lxc.id_map = g 0 %d %d\n", firstGid, containerGid))
-
-		//now the user ID is mapped 1:1
-		writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d 1\n", containerUid, uid))
-		writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d 1\n", containerGid, gid))
-
-		//and the rest
-		writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d %d\n", containerUid+1, firstUid+containerUid+1, uidRange-containerUid-1))
-		writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d %d\n", containerGid+1, firstGid+containerGid+1, gidRange-containerGid-1))
-		writer.Flush()
+	confFile, err := os.Create(confFileName)
+	if err != nil {
+		return "", err
 	}
+
+	defer confFile.Close()
+	writer := bufio.NewWriter(confFile)
+
+	currUser, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+
+	t_uid, err := strconv.ParseUint(currUser.Uid, 10, 32)
+	if err != nil {
+		return "", err
+	}
+
+	t_gid, err := strconv.ParseUint(currUser.Gid, 10, 32)
+	if err != nil {
+		return "", err
+	}
+
+	containerUid, containerGid, _, err := lm_sdk_tools.DistroToUserIds(c.distro)
+	if err != nil {
+		return "", err
+	}
+
+	uid := uint32(t_uid)
+	gid := uint32(t_gid)
+
+	firstUid, uidRange, err := lm_sdk_tools.GetOrCreateUidRange(false)
+	if err != nil {
+		return "", err
+	}
+
+	firstGid, gidRange, err := lm_sdk_tools.GetOrCreateGuidRange(false)
+	if err != nil {
+		return "", err
+	}
+
+	writer.WriteString("lxc.include = /etc/lxc/default.conf\n")
+
+	if containerUid >= firstUid && containerUid < (firstUid+uidRange) {
+
+	}
+
+	//map the first uid and gid range before the current users id
+	writer.WriteString(fmt.Sprintf("lxc.id_map = u 0 %d %d\n", firstUid, containerUid))
+	writer.WriteString(fmt.Sprintf("lxc.id_map = g 0 %d %d\n", firstGid, containerGid))
+
+	//now the user ID is mapped 1:1
+	writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d 1\n", containerUid, uid))
+	writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d 1\n", containerGid, gid))
+
+	//and the rest
+	writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d %d\n", containerUid+1, firstUid+containerUid+1, uidRange-containerUid-1))
+	writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d %d\n", containerGid+1, firstGid+containerGid+1, gidRange-containerGid-1))
+	writer.Flush()
 
 	return confFileName, nil
 }
