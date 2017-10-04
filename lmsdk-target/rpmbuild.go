@@ -41,6 +41,7 @@ type rpmbuildCmd struct {
 	specfile        string
 	tarballName     string
 	outputDirectory string
+	whitelist       string
 	jobs            int
 	installDeps     bool
 	upgrade         bool
@@ -57,7 +58,8 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.specfile, "s", "", "specfile location")
 	gnuflag.StringVar(&c.tarballName, "t", "", "tarball name")
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
-	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are placed")
+	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are copied")
+	gnuflag.StringVar(&c.whitelist, "whitelist", "", "Comma-separated whitelist of packages to be installed. Use with --install.")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 	gnuflag.BoolVar(&c.install, "install", false, "Install the result rpm's in the container")
@@ -298,11 +300,6 @@ func (c *rpmbuildCmd) run(args []string) error {
 		os.Exit(1)
 	}
 
-	// Don't allow setting install and output directory at the same time
-	if c.install && len(c.outputDirectory) > 0 {
-		return fmt.Errorf("Can't use install and output directory at the same time!")
-	}
-
 	c.container = args[0]
 	c.projectDir = args[1]
 
@@ -483,23 +480,29 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return fmt.Errorf("The rpmbuild command failed")
 	}
 
-	if c.install {
-		// Create a temporary output directory
-		c.outputDirectory, err = ioutil.TempDir("", "lmsdk-target-temp")
-		if err != nil {
-			return err
-		}
+	// Create a temporary package directory
+	packageDir, err := ioutil.TempDir("", "lmsdk-target-temp")
+	if err != nil {
+		return err
+	}
+
+	// Copy build results to temporary package directory
+	fmt.Printf("Copying results from %s to %s\n", path.Join(builddir, "RPMS", "*", "*"), packageDir)
+	command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*", "*"), packageDir)
+	_, err = exec.Command("bash", "-c", command).Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
+		return err
 	}
 
 	if len(c.outputDirectory) > 0 {
-		// Copy build results to output directory
 		if _, err = os.Stat(c.outputDirectory); err != nil {
-			fmt.Fprintf(os.Stderr, "Can not access output directory.\n")
+			fmt.Fprintf(os.Stderr, "Can not access output directory %s.\n", c.outputDirectory)
 			return err
 		}
-
-		fmt.Printf("Copying results from %s to %s\n", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
-		command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
+		// Copy build results to output directory
+		fmt.Printf("Copying results from %s to %s\n", packageDir, c.outputDirectory)
+		command = fmt.Sprintf("cp -r %s/* %s", packageDir, c.outputDirectory)
 		_, err = exec.Command("bash", "-c", command).Output()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
@@ -508,16 +511,44 @@ func (c *rpmbuildCmd) run(args []string) error {
 	}
 
 	if(c.install) {
+		if len(c.whitelist) > 0 {
+			fmt.Printf("Whitelist set to: %s, removing unnecessary packages:\n[ ", c.whitelist)
+
+			files, err := ioutil.ReadDir(packageDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Unable to list files in " + packageDir)
+				return err
+			}
+
+			whitelist := strings.Split(c.whitelist, ",")
+
+			for _, file := range files {
+				// Figure out the package name from filename
+				pkgname := strings.Split(file.Name(), ".")[0]
+				pkgname = pkgname[0:strings.LastIndex(pkgname, "-")]
+				// Check if package is whitelisted
+				whitelisted := false
+				for _, v := range whitelist {
+					if v == pkgname {
+						whitelisted = true
+					}
+				}
+				if !whitelisted {
+					fmt.Printf(pkgname + " ")
+					os.Remove(path.Join(packageDir, file.Name()))
+				}
+			}
+			fmt.Printf("]\n ")
+		}
 		// Install the build results from output directory in container
 		fmt.Printf("Installing RPM's in the container..\n")
+		command = fmt.Sprintf("rpm -Uvh --force %s/*.rpm", packageDir)
 
-		command = fmt.Sprintf("rpm -Uvh --force --ignorearch %s/*.rpm", c.outputDirectory)
-
-		_, err := lm_sdk_tools.RunInContainer(container, true, envVars, command, os.Stdout.Fd(), os.Stderr.Fd())
+		_, err = lm_sdk_tools.RunInContainer(container, true, envVars, command, os.Stdout.Fd(), os.Stderr.Fd())
 		if err != nil {
 			return fmt.Errorf("Failed to execute rpm command in the container: %v", err)
 		}
-		defer os.RemoveAll(c.outputDirectory) // clean up
+		defer os.RemoveAll(packageDir) // clean up
 	}
 	return nil
 }
