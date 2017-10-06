@@ -39,7 +39,7 @@ func (c *rootfsCmd) flags() {
 
 func (c *rootfsCmd) run(args []string) error {
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, c.usage())
+		PrintUsage(c)
 		os.Exit(1)
 	}
 

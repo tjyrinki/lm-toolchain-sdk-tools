@@ -21,10 +21,7 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"time"
-
-	"launchpad.net/gnuflag"
 
 	"gopkg.in/lxc/go-lxc.v2"
 	"link-motion.com/lm-sdk-tools"
@@ -47,8 +44,7 @@ func (c *statusCmd) flags() {
 
 func (c *statusCmd) run(args []string) error {
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, c.usage())
-		gnuflag.PrintDefaults()
+		PrintUsage(c)
 		return fmt.Errorf("Missing arguments.")
 	}
 

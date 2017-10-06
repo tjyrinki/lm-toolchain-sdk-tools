@@ -170,22 +170,14 @@ func (c *createCmd) run(args []string) error {
 		if !c.keepOnError {
 			lm_sdk_tools.RemoveContainerSync(container.Name())
 		}
-		return fmt.Errorf("ERROR: %v", err.Error())
+		return fmt.Errorf("ERROR1: %v", err.Error())
 	}
 
 	if err = c.registerUserInContainer(container, uint(containerUserId), containerUserName); err != nil {
 		if !c.keepOnError {
 			lm_sdk_tools.RemoveContainerSync(container.Name())
 		}
-		return fmt.Errorf("ERROR: %v", err.Error())
-	}
-
-	tools := fixables.NewToolsFixable()
-	if err = tools.FixContainer(c.name); err != nil {
-		if !c.keepOnError {
-			lm_sdk_tools.RemoveContainerSync(container.Name())
-		}
-		return fmt.Errorf("ERROR: %v", err.Error())
+		return fmt.Errorf("ERROR2: %v", err.Error())
 	}
 
 	//everything worked out, as last write the config-lm file
@@ -195,23 +187,15 @@ func (c *createCmd) run(args []string) error {
 		Version:        c.version,
 		Distribution:   c.distro,
 		UpdatesEnabled: false,
-		Container:      nil,
+		Container:      container,
 	}
 
-	lmConfig, err := json.MarshalIndent(&lmContainer, "  ", "  ")
+	err = FinalizeContainer(&lmContainer)
 	if err != nil {
 		if !c.keepOnError {
 			lm_sdk_tools.RemoveContainerSync(container.Name())
 		}
-		return fmt.Errorf("Unable to marshall config-lm file: %v", err.Error())
-	}
-
-	err = ioutil.WriteFile(container.ConfigFileName()+"-lm", lmConfig, 0664)
-	if err != nil {
-		if !c.keepOnError {
-			lm_sdk_tools.RemoveContainerSync(container.Name())
-		}
-		return fmt.Errorf("Unable to write config-lm file: %v", err.Error())
+		return err
 	}
 
 	return nil
@@ -433,4 +417,23 @@ func (c *createCmd) registerUserInContainer(container *lxc.Container, containerU
 	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
+}
+
+// FinalizeContainer runs all lmsdk specific tasks after the container has been created
+func FinalizeContainer(container *lm_sdk_tools.LMTargetContainer) error {
+	tools := fixables.NewToolsFixable()
+	if err := tools.FixContainer(container.Container.Name()); err != nil {
+		return fmt.Errorf("Unable to fix container %v", err.Error())
+	}
+
+	lmConfig, err := json.MarshalIndent(&container, "  ", "  ")
+	if err != nil {
+		return fmt.Errorf("Unable to marshall config-lm file: %v", err.Error())
+	}
+
+	err = ioutil.WriteFile(container.Container.ConfigFileName()+"-lm", lmConfig, 0664)
+	if err != nil {
+		return fmt.Errorf("Unable to write config-lm file: %v", err.Error())
+	}
+	return nil
 }

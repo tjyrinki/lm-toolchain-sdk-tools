@@ -41,7 +41,7 @@ func (c *existsCmd) flags() {
 
 func (c *existsCmd) run(args []string) error {
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, c.usage())
+		PrintUsage(c)
 		os.Exit(1)
 	}
 

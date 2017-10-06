@@ -292,7 +292,7 @@ func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sd
 func (c *rpmbuildCmd) run(args []string) error {
 
 	if len(args) < 2 {
-		fmt.Fprint(os.Stderr, c.usage())
+		PrintUsage(c)
 		os.Exit(1)
 	}
 

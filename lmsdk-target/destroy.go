@@ -19,7 +19,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"link-motion.com/lm-sdk-tools"
@@ -40,7 +39,7 @@ func (c *destroyCmd) flags() {
 
 func (c *destroyCmd) run(args []string) error {
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, c.usage())
+		PrintUsage(c)
 		os.Exit(1)
 	}
 	c.container = args[0]

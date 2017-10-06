@@ -19,7 +19,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 )
 
@@ -37,7 +36,7 @@ func (c *upgradeCmd) flags() {
 
 func (c *upgradeCmd) run(args []string) error {
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, c.usage())
+		PrintUsage(c)
 		os.Exit(1)
 	}
 

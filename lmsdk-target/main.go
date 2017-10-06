@@ -63,6 +63,7 @@ var commands = map[string]command{
 	"autofix":     &autofixCmd{},
 	"rpmbuild":    &rpmbuildCmd{},
 	"username":    &usernameCmd{},
+	"snapshot":    &snapshotCmd{},
 	//"set" : &setCmd{},
 }
 
@@ -96,8 +97,7 @@ func run() error {
 
 	cmd.flags()
 	gnuflag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s\n\nOptions:\n\n", strings.TrimSpace(cmd.usage()))
-		gnuflag.PrintDefaults()
+		PrintUsage(cmd)
 	}
 
 	os.Args = os.Args[1:]
@@ -109,4 +109,10 @@ func run() error {
 		os.Exit(1)
 	}
 	return err
+}
+
+//PrintUsage prints the usage information of the command
+func PrintUsage(c command) {
+	fmt.Fprintf(os.Stderr, "Usage: %s\n\nOptions:\n\n", strings.TrimSpace(c.usage()))
+	gnuflag.PrintDefaults()
 }

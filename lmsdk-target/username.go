@@ -19,9 +19,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-
-	"launchpad.net/gnuflag"
 
 	"link-motion.com/lm-sdk-tools"
 )
@@ -41,8 +38,7 @@ func (c *usernameCmd) flags() {
 
 func (c *usernameCmd) run(args []string) error {
 	if len(args) < 1 {
-		fmt.Fprint(os.Stderr, c.usage())
-		gnuflag.PrintDefaults()
+		PrintUsage(c)
 		return fmt.Errorf("Missing arguments.")
 	}
 
