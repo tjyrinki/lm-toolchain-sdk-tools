@@ -33,6 +33,7 @@ import (
 
 	"launchpad.net/gnuflag"
 	"link-motion.com/lm-sdk-tools"
+	"strconv"
 )
 
 type rpmbuildCmd struct {
@@ -42,6 +43,7 @@ type rpmbuildCmd struct {
 	tarballName     string
 	outputDirectory string
 	whitelist       string
+	preferredpackages      string
 	jobs            int
 	installDeps     bool
 	upgrade         bool
@@ -60,6 +62,7 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
 	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are copied")
 	gnuflag.StringVar(&c.whitelist, "whitelist", "", "Comma-separated whitelist of packages to be installed. Use with --install.")
+	gnuflag.StringVar(&c.preferredpackages,"preferredpackages", "", "Directory of packages to be preferred during build.")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 	gnuflag.BoolVar(&c.install, "install", false, "Install the result rpm's in the container")
@@ -184,6 +187,47 @@ type solvable struct {
 	Name    string `xml:"name,attr"`
 	Summary string `xml:"summary,attr"`
 	Kind    string `xml:"kind,attr"`
+}
+
+/*
+addZypperRepository Initializes a zypper repository, adds it to the container and updates it.
+
+sourceDir = Plain directory with packages to copy to the repository. Not touched by this function.
+name = Name of the repository (don't use spaces!)
+priority = Zypper priority (lower is higher!)
+container = Container to add the repository into
+
+The repository is created as temporary directory in /tmp. Caller must delete it after use
+if needed. Old repository with same name is removed before adding the new one.
+Requires 'createrepo' command to be available.
+
+Returns directory of the created repository and error code.
+*/
+func addZypperRepository(sourceDir string, name string, priority int, container *lm_sdk_tools.LMTargetContainer) (error, string) {
+	repoDir, err := ioutil.TempDir("", "lm-sdk-repo" + name)
+	out, err := exec.Command("bash", "-c", "cp " + filepath.Join(sourceDir, "*") + " " + repoDir).CombinedOutput()
+	if err != nil {
+		fmt.Printf("Copying files to repository failed: %v, %s", err, out)
+		return err, repoDir
+	}
+	out, err = exec.Command("createrepo", repoDir).CombinedOutput()
+	if err != nil {
+		fmt.Printf("Creating repo failed. Make sure you have createrepo command/package installed. %v, %s", err, out)
+		return err, repoDir
+	}
+	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper rr " + name, os.Stdout.Fd(), os.Stderr.Fd())
+	if err != nil {
+		return fmt.Errorf("Failed to execute zypper rr command in the container: %v", err), repoDir
+	}
+	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper ar -p " + strconv.Itoa(priority) + " -G " + repoDir + " " + name, os.Stdout.Fd(), os.Stderr.Fd())
+	if err != nil {
+		return fmt.Errorf("Failed to execute zypper ar command in the container: %v", err), repoDir
+	}
+	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper up", os.Stdout.Fd(), os.Stderr.Fd())
+	if err != nil {
+		return fmt.Errorf("Failed to execute zypper up command in the container: %v", err), repoDir
+	}
+	return nil, repoDir
 }
 
 func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sdk_tools.LMTargetContainer) error {
@@ -358,6 +402,17 @@ func (c *rpmbuildCmd) run(args []string) error {
 		}
 	}
 
+	if len(c.preferredpackages) > 0 {
+		// Setup a preferred packages repo
+		err, repoDir := addZypperRepository(c.preferredpackages, "preferredpackages", 20, container)
+		defer os.RemoveAll(repoDir)
+
+		if err != nil {
+			fmt.Printf("Creating preferred packages repository failed: %v\n", err)
+			return err
+		}
+	}
+
 	fmt.Printf("Building using the specfile: %s\n", c.specfile)
 
 	//create a clean build environment
@@ -369,7 +424,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 	//make sure the user in the container can read the directory
 	os.Chmod(builddir, os.ModeDir|0777)
 
-	//defer os.RemoveAll(builddir) // clean up
+	defer os.RemoveAll(builddir) // clean up
 
 	fmt.Printf("Build dir: %s\n", builddir)
 
@@ -511,38 +566,40 @@ func (c *rpmbuildCmd) run(args []string) error {
 	}
 
 	if(c.install) {
-		if len(c.whitelist) > 0 {
-			fmt.Printf("Whitelist set to: %s, removing unnecessary packages:\n[ ", c.whitelist)
+		// Install the built packages
+		packagesToInstall := strings.Split(c.whitelist, ",")
 
+		if len(c.whitelist) == 0 {
+			// No whitelist - install all built packages
 			files, err := ioutil.ReadDir(packageDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: Unable to list files in " + packageDir)
 				return err
 			}
 
-			whitelist := strings.Split(c.whitelist, ",")
-
 			for _, file := range files {
 				// Figure out the package name from filename
 				pkgname := strings.Split(file.Name(), ".")[0]
 				pkgname = pkgname[0:strings.LastIndex(pkgname, "-")]
-				// Check if package is whitelisted
-				whitelisted := false
-				for _, v := range whitelist {
-					if v == pkgname {
-						whitelisted = true
-					}
-				}
-				if !whitelisted {
-					fmt.Printf(pkgname + " ")
-					os.Remove(path.Join(packageDir, file.Name()))
-				}
+				packagesToInstall = append(packagesToInstall, pkgname)
 			}
-			fmt.Printf("]\n ")
 		}
+		packagesToInstallString := ""
+		for _, pkgname := range packagesToInstall {
+			packagesToInstallString += pkgname + " "
+		}
+
+		// Add a repository with the packages to install
+		err, repoDir := addZypperRepository(packageDir, "installdir", 10, container)
+		defer os.RemoveAll(repoDir)
+		if err != nil {
+			fmt.Printf("Creating a zypper repository failed: %v", err)
+			return err
+		}
+
 		// Install the build results from output directory in container
 		fmt.Printf("Installing RPM's in the container..\n")
-		command = fmt.Sprintf("rpm -Uvh --force %s/*.rpm", packageDir)
+		command = fmt.Sprintf("zypper in -y -f %s", packagesToInstallString)
 
 		_, err = lm_sdk_tools.RunInContainer(container, true, envVars, command, os.Stdout.Fd(), os.Stderr.Fd())
 		if err != nil {
