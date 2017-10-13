@@ -550,42 +550,57 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return err
 	}
 
-	if len(c.outputDirectory) > 0 {
-		if _, err = os.Stat(c.outputDirectory); err != nil {
-			fmt.Fprintf(os.Stderr, "Can not access output directory %s.\n", c.outputDirectory)
-			return err
-		}
-		// Copy build results to output directory
-		fmt.Printf("Copying results from %s to %s\n", packageDir, c.outputDirectory)
-		command = fmt.Sprintf("cp -r %s/* %s", packageDir, c.outputDirectory)
-		_, err = exec.Command("bash", "-c", command).Output()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
-			return err
+	// Array of whitelisted packages
+	whitelistedPackages := make([]string, 0)
+
+	if len(c.whitelist) > 0 {
+		// Whitelist set by user, use it for the whitelist
+		whitelistedPackages = strings.Split(c.whitelist, ",")
+	}
+
+	// Build a hashmap of packages and their filenames to be used later
+	files, err := ioutil.ReadDir(packageDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Unable to list files in " + packageDir)
+		return err
+	}
+
+	// Map of packagename -> packagefilename
+	packageFiles := make(map[string]string)
+
+	for _, file := range files {
+		// Figure out the package name from filename
+		pkgname := strings.Split(file.Name(), ".")[0]
+		pkgname = pkgname[0:strings.LastIndex(pkgname, "-")]
+		packageFiles[pkgname] = file.Name()
+
+		// If empty whitelist, append all built packages
+		if len(c.whitelist) == 0 {
+			whitelistedPackages = append(whitelistedPackages, pkgname)
 		}
 	}
 
-	if(c.install) {
-		// Install the built packages
-		packagesToInstall := strings.Split(c.whitelist, ",")
-
-		if len(c.whitelist) == 0 {
-			// No whitelist - install all built packages
-			files, err := ioutil.ReadDir(packageDir)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: Unable to list files in " + packageDir)
-				return err
-			}
-
-			for _, file := range files {
-				// Figure out the package name from filename
-				pkgname := strings.Split(file.Name(), ".")[0]
-				pkgname = pkgname[0:strings.LastIndex(pkgname, "-")]
-				packagesToInstall = append(packagesToInstall, pkgname)
+	if len(c.outputDirectory) > 0 {
+		// Copy whitelisted result files to output directory
+		for packageName, packageFile := range packageFiles {
+			for _, whitelistedPackage := range whitelistedPackages {
+				if whitelistedPackage == packageName {
+					command = fmt.Sprintf("cp -r %s/%s* %s", packageDir, packageFile, c.outputDirectory)
+					_, err = exec.Command("bash", "-c", command).Output()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
+						return err
+					}
+				}
 			}
 		}
+	}
+
+	if c.install {
+		// Install the whitelisted built packages
+
 		packagesToInstallString := ""
-		for _, pkgname := range packagesToInstall {
+		for _, pkgname := range whitelistedPackages {
 			packagesToInstallString += pkgname + " "
 		}
 
