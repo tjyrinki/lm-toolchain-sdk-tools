@@ -48,12 +48,13 @@ type rpmbuildCmd struct {
 	installDeps     bool
 	upgrade         bool
 	install         bool
+	nocleanbuild    bool
 }
 
 func (c *rpmbuildCmd) usage() string {
 	return (`Build a rpm in a container build target.
 
-lmsdk-target rpmbuild container <sourcedir> [-t tarballname] [-j threads] [-s specfile] [-o output directory] [--install]\n`)
+lmsdk-target rpmbuild container <sourcedir> [-t tarballname] [-j threads] [-s specfile] [-o output directory] [--build-deps] [--install]`)
 }
 
 func (c *rpmbuildCmd) flags() {
@@ -66,6 +67,7 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 	gnuflag.BoolVar(&c.install, "install", false, "Install the result rpm's in the container")
+	gnuflag.BoolVar(&c.nocleanbuild, "nocleanbuild", false, "Don't clean up the build container after building")
 }
 
 /**
@@ -353,18 +355,44 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return fmt.Errorf("Could not connect to the Container: %v\n", err)
 	}
 
+	//get executable name of lmsdg-target, for future use
+	me, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read path of lmsdk-target binary: %v\n", err)
+		return err
+	}
+
+	if ! c.nocleanbuild {
+		// Create a new snapshot to be able to reset to initial state
+		comm := exec.Command(me, "snapshot", c.container, "-N", "rpmbuild")
+		comm.Stdout = os.Stdout
+		comm.Stderr = os.Stderr
+
+		err = comm.Run()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Creating a container snapshot failed.\n")
+			return err
+		}
+
+		// Delete the created snapshot after build
+		defer func(){
+			comm := exec.Command(me, "snapshot", c.container, "--destroy")
+			comm.Stdout = os.Stdout
+			comm.Stderr = os.Stderr
+
+			err = comm.Run()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Destroying container snapshot failed.\n")
+			}
+		}()
+	}
+
 	err = lm_sdk_tools.BootContainerSync(container)
 	if err != nil {
 		return err
 	}
 
 	if c.upgrade {
-		me, err := os.Executable()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read path of lmsdk-target binary: %v\n", err)
-			return err
-		}
-
 		comm := exec.Command(me, "upgrade", c.container)
 		comm.Stdout = os.Stdout
 		comm.Stderr = os.Stderr
@@ -506,7 +534,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return err
 	}
 
-	//install build depenencies
+	//install build dependencies
 	if c.installDeps {
 		err = c.installBuildDependencies(filepath.Join(rpmSourcesDir, specfileName), container)
 		if err != nil {
