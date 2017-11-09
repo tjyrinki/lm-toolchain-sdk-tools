@@ -568,13 +568,15 @@ func (c *rpmbuildCmd) run(args []string) error {
 	if err != nil {
 		return err
 	}
+	// clean up packageDir when done
+	defer os.RemoveAll(packageDir)
 
 	// Copy build results to temporary package directory
 	fmt.Printf("Copying results from %s to %s\n", path.Join(builddir, "RPMS", "*", "*"), packageDir)
 	command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*", "*"), packageDir)
-	_, err = exec.Command("bash", "-c", command).Output()
+	out, err := exec.Command("bash", "-c", command).Output()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
+		fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
 		return err
 	}
 
@@ -589,7 +591,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 	// Build a hashmap of packages and their filenames to be used later
 	files, err := ioutil.ReadDir(packageDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Unable to list files in " + packageDir)
+		fmt.Fprintf(os.Stderr, "Error: Unable to list files in %s", packageDir)
 		return err
 	}
 
@@ -610,13 +612,14 @@ func (c *rpmbuildCmd) run(args []string) error {
 
 	if len(c.outputDirectory) > 0 {
 		// Copy whitelisted result files to output directory
+		fmt.Printf("Copying packages to output directory %s\n", c.outputDirectory)
 		for packageName, packageFile := range packageFiles {
 			for _, whitelistedPackage := range whitelistedPackages {
 				if whitelistedPackage == packageName {
-					command = fmt.Sprintf("cp -r %s/%s* %s", packageDir, packageFile, c.outputDirectory)
-					_, err = exec.Command("bash", "-c", command).Output()
+					command = fmt.Sprintf("cp -rv %s/%s* %s", packageDir, packageFile, c.outputDirectory)
+					out, err := exec.Command("bash", "-c", command).Output()
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "Failed to copy results.\n")
+						fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
 						return err
 					}
 				}
@@ -648,7 +651,6 @@ func (c *rpmbuildCmd) run(args []string) error {
 		if err != nil {
 			return fmt.Errorf("Failed to execute rpm command in the container: %v", err)
 		}
-		defer os.RemoveAll(packageDir) // clean up
 	}
 	return nil
 }
