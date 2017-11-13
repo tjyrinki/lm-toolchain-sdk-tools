@@ -238,7 +238,8 @@ func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sd
 		"LC_ALL=C",
 	}
 
-	command := fmt.Sprintf("rpmspec -q --srpm --buildrequires %s",
+	command := fmt.Sprintf("rpmspec -q --srpm --buildrequires  --target %s %s",
+		container.Architecture,
 		specfile,
 	)
 
