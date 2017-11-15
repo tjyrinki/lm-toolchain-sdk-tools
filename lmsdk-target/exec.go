@@ -25,7 +25,7 @@ import (
 	"syscall"
 
 	"launchpad.net/gnuflag"
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 )
 
 type execCmd struct {

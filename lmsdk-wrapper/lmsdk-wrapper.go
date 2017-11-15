@@ -36,7 +36,7 @@ import (
 
 	"github.com/pborman/uuid"
 	"gopkg.in/lxc/go-lxc.v2"
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 )
 
 var container string

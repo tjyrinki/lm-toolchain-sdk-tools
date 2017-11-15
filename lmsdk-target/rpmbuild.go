@@ -32,7 +32,7 @@ import (
 	"strings"
 
 	"launchpad.net/gnuflag"
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 	"strconv"
 )
 

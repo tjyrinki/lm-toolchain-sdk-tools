@@ -21,7 +21,7 @@ package main
 import (
 	"os"
 
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 )
 
 type destroyCmd struct {

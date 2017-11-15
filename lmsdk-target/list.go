@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 )
 
 type listCmd struct {

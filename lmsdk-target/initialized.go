@@ -24,7 +24,7 @@ import (
 	"os/exec"
 
 	"launchpad.net/gnuflag"
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 )
 
 const (

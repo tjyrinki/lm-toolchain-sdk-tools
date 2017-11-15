@@ -34,7 +34,7 @@ import (
 	"strings"
 
 	"launchpad.net/gnuflag"
-	"link-motion.com/lm-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools"
 )
 
 var errArgs = fmt.Errorf("wrong number of subcommand arguments")

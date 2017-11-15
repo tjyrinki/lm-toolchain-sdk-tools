@@ -40,8 +40,8 @@ import (
 
 	"gopkg.in/lxc/go-lxc.v2"
 	"launchpad.net/gnuflag"
-	"link-motion.com/lm-sdk-tools"
-	"link-motion.com/lm-sdk-tools/fixables"
+	"link-motion.com/lm-toolchain-sdk-tools"
+	"link-motion.com/lm-toolchain-sdk-tools/fixables"
 )
 
 type createCmd struct {
