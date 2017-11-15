@@ -42,12 +42,10 @@ type rpmbuildCmd struct {
 	specfile        string
 	tarballName     string
 	outputDirectory string
-	whitelist       string
 	preferredpackages      string
 	jobs            int
 	installDeps     bool
 	upgrade         bool
-	install         bool
 	nocleanbuild    bool
 }
 
@@ -62,11 +60,9 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.tarballName, "t", "", "tarball name")
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
 	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are copied")
-	gnuflag.StringVar(&c.whitelist, "whitelist", "", "Comma-separated whitelist of packages to be installed. Use with --install.")
 	gnuflag.StringVar(&c.preferredpackages,"preferredpackages", "", "Directory of packages to be preferred during build.")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
-	gnuflag.BoolVar(&c.install, "install", false, "Install the result rpm's in the container")
 	gnuflag.BoolVar(&c.nocleanbuild, "nocleanbuild", false, "Don't clean up the build container after building")
 }
 
@@ -377,7 +373,17 @@ func (c *rpmbuildCmd) run(args []string) error {
 
 		// Delete the created snapshot after build
 		defer func(){
-			comm := exec.Command(me, "snapshot", c.container, "--destroy")
+			// Restore previous snapshot
+			comm := exec.Command(me, "snapshot", c.container, "--restore")
+			comm.Stdout = os.Stdout
+			comm.Stderr = os.Stderr
+
+			err = comm.Run()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Restoring container snapshot failed.\n")
+			}
+			// Destroy snapshot
+			comm = exec.Command(me, "snapshot", c.container, "--destroy")
 			comm.Stdout = os.Stdout
 			comm.Stderr = os.Stderr
 
@@ -581,14 +587,6 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return err
 	}
 
-	// Array of whitelisted packages
-	whitelistedPackages := make([]string, 0)
-
-	if len(c.whitelist) > 0 {
-		// Whitelist set by user, use it for the whitelist
-		whitelistedPackages = strings.Split(c.whitelist, ",")
-	}
-
 	// Build a hashmap of packages and their filenames to be used later
 	files, err := ioutil.ReadDir(packageDir)
 	if err != nil {
@@ -596,62 +594,18 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return err
 	}
 
-	// Map of packagename -> packagefilename
-	packageFiles := make(map[string]string)
-
-	for _, file := range files {
-		// Figure out the package name from filename
-		pkgname := strings.Split(file.Name(), ".")[0]
-		pkgname = pkgname[0:strings.LastIndex(pkgname, "-")]
-		packageFiles[pkgname] = file.Name()
-
-		// If empty whitelist, append all built packages
-		if len(c.whitelist) == 0 {
-			whitelistedPackages = append(whitelistedPackages, pkgname)
-		}
-	}
-
 	if len(c.outputDirectory) > 0 {
-		// Copy whitelisted result files to output directory
+		// Copy result files to output directory
 		fmt.Printf("Copying packages to output directory %s\n", c.outputDirectory)
-		for packageName, packageFile := range packageFiles {
-			for _, whitelistedPackage := range whitelistedPackages {
-				if whitelistedPackage == packageName {
-					command = fmt.Sprintf("cp -rv %s/%s* %s", packageDir, packageFile, c.outputDirectory)
-					out, err := exec.Command("bash", "-c", command).Output()
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
-						return err
-					}
-				}
+		for _, file := range files {
+			command = fmt.Sprintf("cp -rv %s/%s* %s", packageDir, file, c.outputDirectory)
+			out, err := exec.Command("bash", "-c", command).Output()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
+				return err
 			}
 		}
 	}
 
-	if c.install {
-		// Install the whitelisted built packages
-
-		packagesToInstallString := ""
-		for _, pkgname := range whitelistedPackages {
-			packagesToInstallString += pkgname + " "
-		}
-
-		// Add a repository with the packages to install
-		err, repoDir := addZypperRepository(packageDir, "installdir", 10, container)
-		defer os.RemoveAll(repoDir)
-		if err != nil {
-			fmt.Printf("Creating a zypper repository failed: %v", err)
-			return err
-		}
-
-		// Install the build results from output directory in container
-		fmt.Printf("Installing RPM's in the container..\n")
-		command = fmt.Sprintf("zypper in -y -f %s", packagesToInstallString)
-
-		_, err = lm_sdk_tools.RunInContainer(container, true, envVars, command, os.Stdout.Fd(), os.Stderr.Fd())
-		if err != nil {
-			return fmt.Errorf("Failed to execute rpm command in the container: %v", err)
-		}
-	}
 	return nil
 }
