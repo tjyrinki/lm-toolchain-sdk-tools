@@ -352,7 +352,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return fmt.Errorf("Could not connect to the Container: %v\n", err)
 	}
 
-	//get executable name of lmsdg-target, for future use
+	//get executable name of lmsdk-target, for future use
 	me, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read path of lmsdk-target binary: %v\n", err)
