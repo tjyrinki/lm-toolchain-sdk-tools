@@ -31,22 +31,23 @@ import (
 	"runtime"
 	"strings"
 
+	"strconv"
+
 	"launchpad.net/gnuflag"
 	"link-motion.com/lm-toolchain-sdk-tools"
-	"strconv"
 )
 
 type rpmbuildCmd struct {
-	container       string
-	projectDir      string
-	specfile        string
-	tarballName     string
-	outputDirectory string
-	preferredpackages      string
-	jobs            int
-	installDeps     bool
-	upgrade         bool
-	nocleanbuild    bool
+	container         string
+	projectDir        string
+	specfile          string
+	tarballName       string
+	outputDirectory   string
+	preferredpackages string
+	jobs              int
+	installDeps       bool
+	upgrade           bool
+	nocleanbuild      bool
 }
 
 func (c *rpmbuildCmd) usage() string {
@@ -60,7 +61,7 @@ func (c *rpmbuildCmd) flags() {
 	gnuflag.StringVar(&c.tarballName, "t", "", "tarball name")
 	gnuflag.IntVar(&c.jobs, "j", runtime.NumCPU(), "The number of threads to pass to make")
 	gnuflag.StringVar(&c.outputDirectory, "o", "", "Output directory where all rpm files are copied")
-	gnuflag.StringVar(&c.preferredpackages,"preferredpackages", "", "Directory of packages to be preferred during build.")
+	gnuflag.StringVar(&c.preferredpackages, "preferredpackages", "", "Directory of packages to be preferred during build.")
 	gnuflag.BoolVar(&c.installDeps, "build-deps", false, "Install build dependencies")
 	gnuflag.BoolVar(&c.upgrade, "upgrade-before", false, "Upgrade container before starting the build")
 	gnuflag.BoolVar(&c.nocleanbuild, "nocleanbuild", false, "Don't clean up the build container after building")
@@ -202,22 +203,17 @@ Requires 'createrepo' command to be available.
 Returns directory of the created repository and error code.
 */
 func addZypperRepository(sourceDir string, name string, priority int, container *lm_sdk_tools.LMTargetContainer) (error, string) {
-	repoDir, err := ioutil.TempDir("", "lm-sdk-repo" + name)
-	out, err := exec.Command("bash", "-c", "cp " + filepath.Join(sourceDir, "*") + " " + repoDir).CombinedOutput()
+	repoDir, err := ioutil.TempDir("", "lm-sdk-repo"+name)
+	out, err := exec.Command("bash", "-c", "cp "+filepath.Join(sourceDir, "*")+" "+repoDir).CombinedOutput()
 	if err != nil {
 		fmt.Printf("Copying files to repository failed: %v, %s", err, out)
 		return err, repoDir
 	}
-	out, err = exec.Command("createrepo", repoDir).CombinedOutput()
-	if err != nil {
-		fmt.Printf("Creating repo failed. Make sure you have createrepo command/package installed. %v, %s", err, out)
-		return err, repoDir
-	}
-	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper rr " + name, os.Stdout.Fd(), os.Stderr.Fd())
+	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper rr "+name, os.Stdout.Fd(), os.Stderr.Fd())
 	if err != nil {
 		return fmt.Errorf("Failed to execute zypper rr command in the container: %v", err), repoDir
 	}
-	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper ar -p " + strconv.Itoa(priority) + " -G " + repoDir + " " + name, os.Stdout.Fd(), os.Stderr.Fd())
+	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper ar -p "+strconv.Itoa(priority)+" -G "+repoDir+" "+name, os.Stdout.Fd(), os.Stderr.Fd())
 	if err != nil {
 		return fmt.Errorf("Failed to execute zypper ar command in the container: %v", err), repoDir
 	}
@@ -359,7 +355,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return err
 	}
 
-	if ! c.nocleanbuild {
+	if !c.nocleanbuild {
 		// Create a new snapshot to be able to reset to initial state
 		comm := exec.Command(me, "snapshot", c.container, "-N", "rpmbuild")
 		comm.Stdout = os.Stdout
@@ -372,7 +368,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 		}
 
 		// Delete the created snapshot after build
-		defer func(){
+		defer func() {
 			// Restore previous snapshot
 			comm := exec.Command(me, "snapshot", c.container, "--restore")
 			comm.Stdout = os.Stdout
@@ -397,6 +393,17 @@ func (c *rpmbuildCmd) run(args []string) error {
 	err = lm_sdk_tools.BootContainerSync(container)
 	if err != nil {
 		return err
+	}
+
+	if len(c.preferredpackages) > 0 {
+		// Setup a preferred packages repo
+		err, repoDir := addZypperRepository(c.preferredpackages, "preferredpackages", 20, container)
+		defer os.RemoveAll(repoDir)
+
+		if err != nil {
+			fmt.Printf("Creating preferred packages repository failed: %v\n", err)
+			return err
+		}
 	}
 
 	if c.upgrade {
@@ -437,17 +444,6 @@ func (c *rpmbuildCmd) run(args []string) error {
 		}
 	}
 
-	if len(c.preferredpackages) > 0 {
-		// Setup a preferred packages repo
-		err, repoDir := addZypperRepository(c.preferredpackages, "preferredpackages", 20, container)
-		defer os.RemoveAll(repoDir)
-
-		if err != nil {
-			fmt.Printf("Creating preferred packages repository failed: %v\n", err)
-			return err
-		}
-	}
-
 	fmt.Printf("Building using the specfile: %s\n", c.specfile)
 
 	//create a clean build environment
@@ -458,8 +454,6 @@ func (c *rpmbuildCmd) run(args []string) error {
 
 	//make sure the user in the container can read the directory
 	os.Chmod(builddir, os.ModeDir|0777)
-
-	defer os.RemoveAll(builddir) // clean up
 
 	fmt.Printf("Build dir: %s\n", builddir)
 
@@ -570,42 +564,20 @@ func (c *rpmbuildCmd) run(args []string) error {
 		return fmt.Errorf("The rpmbuild command failed")
 	}
 
-	// Create a temporary package directory
-	packageDir, err := ioutil.TempDir("", "lmsdk-target-temp")
-	if err != nil {
-		return err
-	}
-	// clean up packageDir when done
-	defer os.RemoveAll(packageDir)
-
-	// Copy build results to temporary package directory
-	fmt.Printf("Copying results from %s to %s\n", path.Join(builddir, "RPMS", "*", "*"), packageDir)
-	command = fmt.Sprintf("cp -r %s %s", path.Join(builddir, "RPMS", "*", "*"), packageDir)
-	out, err := exec.Command("bash", "-c", command).Output()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
-		return err
-	}
-
-	// Build a hashmap of packages and their filenames to be used later
-	files, err := ioutil.ReadDir(packageDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Unable to list files in %s", packageDir)
-		return err
-	}
-
 	if len(c.outputDirectory) > 0 {
-		// Copy result files to output directory
-		fmt.Printf("Copying packages to output directory %s\n", c.outputDirectory)
-		for _, file := range files {
-			command = fmt.Sprintf("cp -rv %s/%s* %s", packageDir, file, c.outputDirectory)
-			out, err := exec.Command("bash", "-c", command).Output()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
-				return err
-			}
+		if _, err = os.Stat(c.outputDirectory); err != nil {
+			fmt.Fprintf(os.Stderr, "Can not access output directory.\n")
+			return err
+		}
+
+		// Copy build results to the output package directory
+		fmt.Printf("Copying results from %s to %s\n", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
+		command = fmt.Sprintf("cp -rv %s %s", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
+		out, err := exec.Command("bash", "-c", command).Output()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
+			return err
 		}
 	}
-
 	return nil
 }

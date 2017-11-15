@@ -8,6 +8,8 @@ GO       = env GOPATH=$(GOPATH) go
 
 
 all:	$(BASE) $(BIN)/lmsdk-target $(BIN)/lmsdk-wrapper $(BIN)/lmsdk-download $(BIN)/lxc-lm-download
+clean:	
+	rm -rf $(GOPATH)/pkg $(GOPATH)/bin
 
 $(BASE): ; $(info setting GOPATH…)
 	@mkdir -p $(dir $@)
