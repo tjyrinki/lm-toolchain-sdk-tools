@@ -64,6 +64,7 @@ var commands = map[string]command{
 	"rpmbuild":    &rpmbuildCmd{},
 	"username":    &usernameCmd{},
 	"snapshot":    &snapshotCmd{},
+	"rpminstall":  &rpmInstall{},
 	//"set" : &setCmd{},
 }
 

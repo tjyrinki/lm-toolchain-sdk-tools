@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -632,4 +633,57 @@ func RunInContainerOuput(c *LMTargetContainer, runAsRoot bool, env []string, pro
 	output[1] = buf.String() // Does a complete copy of the bytes in the buffer.
 
 	return output, exitCode, err
+}
+
+/*
+AddZypperRepository Initializes a zypper repository, adds it to the container and updates it.
+
+sourceDir = Plain directory with packages to copy to the repository. Not touched by this function.
+name = Name of the repository (don't use spaces!)
+priority = Zypper priority (lower is higher!)
+runUpdate = run zypper update if true
+container = Container to add the repository into
+
+The repository is created as temporary directory in /tmp. Caller must delete it after use
+if needed. Old repository with same name is removed before adding the new one.
+Requires 'createrepo' command to be available.
+
+Returns directory of the created repository and error code.
+*/
+func AddZypperRepository(sourceDir string, name string, priority int, runUpdate bool, container *LMTargetContainer) (error, string) {
+	repoDir, err := ioutil.TempDir("", "lm-sdk-repo"+name)
+	out, err := exec.Command("bash", "-c", "cp "+filepath.Join(sourceDir, "*")+" "+repoDir).CombinedOutput()
+	if err != nil {
+		fmt.Printf("Copying files to repository failed: %v, %s", err, out)
+		return err, repoDir
+	}
+	_, err = RunInContainer(container, true, []string{}, "zypper --non-interactive rr "+name, os.Stdout.Fd(), os.Stderr.Fd())
+	if err != nil {
+		return fmt.Errorf("Failed to execute zypper rr command in the container: %v", err), repoDir
+	}
+	_, err = RunInContainer(container, true, []string{}, "zypper --non-interactive ar -p "+strconv.Itoa(priority)+" -G "+repoDir+" "+name, os.Stdout.Fd(), os.Stderr.Fd())
+	if err != nil {
+		return fmt.Errorf("Failed to execute zypper ar command in the container: %v", err), repoDir
+	}
+	if runUpdate {
+		_, err = RunInContainer(container, true, []string{}, "zypper --non-interactive up", os.Stdout.Fd(), os.Stderr.Fd())
+		if err != nil {
+			return fmt.Errorf("Failed to execute zypper up command in the container: %v", err), repoDir
+		}
+	}
+	return nil, repoDir
+}
+
+/*
+RemoveZypperRepository Remove a zypper repository.
+
+name = Name of the repository (don't use spaces!)
+container = Container to remove the repository from
+*/
+func RemoveZypperRepository(name string, container *LMTargetContainer) error {
+	_, err := RunInContainer(container, true, []string{}, "zypper --non-interactive rr "+name, os.Stdout.Fd(), os.Stderr.Fd())
+	if err != nil {
+		return fmt.Errorf("Failed to execute zypper rr command in the container: %v", err)
+	}
+	return nil
 }

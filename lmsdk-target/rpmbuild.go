@@ -31,8 +31,6 @@ import (
 	"runtime"
 	"strings"
 
-	"strconv"
-
 	"launchpad.net/gnuflag"
 	"link-motion.com/lm-toolchain-sdk-tools"
 )
@@ -186,42 +184,6 @@ type solvable struct {
 	Name    string `xml:"name,attr"`
 	Summary string `xml:"summary,attr"`
 	Kind    string `xml:"kind,attr"`
-}
-
-/*
-addZypperRepository Initializes a zypper repository, adds it to the container and updates it.
-
-sourceDir = Plain directory with packages to copy to the repository. Not touched by this function.
-name = Name of the repository (don't use spaces!)
-priority = Zypper priority (lower is higher!)
-container = Container to add the repository into
-
-The repository is created as temporary directory in /tmp. Caller must delete it after use
-if needed. Old repository with same name is removed before adding the new one.
-Requires 'createrepo' command to be available.
-
-Returns directory of the created repository and error code.
-*/
-func addZypperRepository(sourceDir string, name string, priority int, container *lm_sdk_tools.LMTargetContainer) (error, string) {
-	repoDir, err := ioutil.TempDir("", "lm-sdk-repo"+name)
-	out, err := exec.Command("bash", "-c", "cp "+filepath.Join(sourceDir, "*")+" "+repoDir).CombinedOutput()
-	if err != nil {
-		fmt.Printf("Copying files to repository failed: %v, %s", err, out)
-		return err, repoDir
-	}
-	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper rr "+name, os.Stdout.Fd(), os.Stderr.Fd())
-	if err != nil {
-		return fmt.Errorf("Failed to execute zypper rr command in the container: %v", err), repoDir
-	}
-	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper ar -p "+strconv.Itoa(priority)+" -G "+repoDir+" "+name, os.Stdout.Fd(), os.Stderr.Fd())
-	if err != nil {
-		return fmt.Errorf("Failed to execute zypper ar command in the container: %v", err), repoDir
-	}
-	_, err = lm_sdk_tools.RunInContainer(container, true, []string{}, "zypper up", os.Stdout.Fd(), os.Stderr.Fd())
-	if err != nil {
-		return fmt.Errorf("Failed to execute zypper up command in the container: %v", err), repoDir
-	}
-	return nil, repoDir
 }
 
 func (c *rpmbuildCmd) installBuildDependencies(specfile string, container *lm_sdk_tools.LMTargetContainer) error {
@@ -397,7 +359,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 
 	if len(c.preferredpackages) > 0 {
 		// Setup a preferred packages repo
-		err, repoDir := addZypperRepository(c.preferredpackages, "preferredpackages", 20, container)
+		err, repoDir := lm_sdk_tools.AddZypperRepository(c.preferredpackages, "preferredpackages", 20, true, container)
 		defer os.RemoveAll(repoDir)
 
 		if err != nil {
