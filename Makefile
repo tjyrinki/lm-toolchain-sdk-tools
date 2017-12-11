@@ -7,15 +7,19 @@ BASE     = $(GOPATH)/src/$(PACKAGE)
 GO       = env GOPATH=$(GOPATH) go
 
 
-all:	$(BASE) $(BIN)/lmsdk-target $(BIN)/lmsdk-wrapper $(BIN)/lmsdk-download $(BIN)/lxc-lm-download
+all: dist
+
 clean:	
 	rm -rf $(GOPATH)/pkg $(GOPATH)/bin
+
+dist: $(BASE) $(BIN)/lmsdk-target $(BIN)/lmsdk-wrapper $(BIN)/lmsdk-download $(BIN)/lxc-lm-download
+	cd $(BIN) && tar czf lm-toolchain-sdk-tools.tgz lmsdk-target lmsdk-wrapper lmsdk-download lxc-lm-download
 
 $(BASE): ; $(info setting GOPATH…)
 	@mkdir -p $(dir $@)
 	@ln -sf $(CURDIR) $@
 
-$(CURDIR)/.gopath/patched:
+$(CURDIR)/.gopath/patched: $(BASE)
 	cd $(GOPATH) && $(GO) get -d link-motion.com/lm-toolchain-sdk-tools/lmsdk-target
 	cd $(GOPATH) && $(GO) get -d link-motion.com/lm-toolchain-sdk-tools/lmsdk-download
 	cd $(GOPATH) && $(GO) get -d link-motion.com/lm-toolchain-sdk-tools/lmsdk-wrapper
