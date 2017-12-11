@@ -1,0 +1,22 @@
+os: linux
+group: stable
+language: go
+go:
+  - 1.9.2
+
+script:
+  - make
+
+addons:
+  apt:
+    packages:
+    - pkg-config 
+    - lxc-dev
+
+deploy:
+  provider: releases
+  api_key:
+    secure: cP+TN4hhMbFmWQav5W7uPFioFD11OW3IQeVfGv7urqo+2/Dg3GoB25kx9BgNMz8FYp+XUcbH24JhdTQoMZSUoh8XhMfisgUWp1vgmmjn7AYqDWgFrQFEdpmNHAjquVD6FSvdTZEpqKsWyf8i1HNsY5T9TzfO+b5n3ircY+ua4KWOJSrs/yaHNszkyJ/4ma4qcxTMXzQ+bMcrSydY97zb7/X5vJBtb2dOb918/na81WhHJ/32ijtghqYTVVkEFW0Iypi8vcV529QgXzqFAR2O2DkdiFN9bWUSpxc4uToP0FrT1uxKOEJMQM0y1rEybOJq4eO/SYmyzdN7ypjlhmI3yV7jHsNgwVV4vxI2S/n/4FPgAW+BBYg+KYtfzgMOIDDDCe/uUiuVN8nM54mPADdHSQwtCNpZXbH+NetkYMXKA8QXnbYAfjSwKDWcV1n7nrM42OissFGSBbDdnjKTO1vEUxDX70WrBiFet1CpU2DRLuCnqrzo6Ge0x7zVje+AumtCs5Ej/InMd/Ruv2Zjc2/pTIfaORdqrW70ooDlqL7jWZTpZ5yAWk6Z4nvsm3BcmIgIj6LYSr26dSbFLHHg+1ytT0UpFOezj0DIwI3HMupuy6al5Q/ANaDdcADs5lJJLDRiLhO6GncoztczYDP/0KRtsRh5vnySZAktBjCbxYKg3PM=
+  file: .gopath/bin/lm-toolchain-sdk-tools.tgz
+  on:
+    repo: linkmotion/lm-toolchain-sdk-tools

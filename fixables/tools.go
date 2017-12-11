@@ -34,12 +34,21 @@ type ToolsFixable struct {
 func NewToolsFixable() *ToolsFixable {
 	return &ToolsFixable{
 		requiredTools: []string{
-			"qmake",
 			"gcc",
 			"g++",
 			"make",
 			"cmake",
 			"rpmbuild",
+			"pkg-config",
+			"qmake",
+			"qtquickcompiler",
+			"rcc",
+			"uic",
+			"lupdate",
+			"lrelease",
+			"lconvert",
+			"moc",
+			"qdoc",
 		},
 	}
 }

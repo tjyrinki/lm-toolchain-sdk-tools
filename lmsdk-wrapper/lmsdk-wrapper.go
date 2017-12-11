@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
@@ -41,14 +42,19 @@ import (
 
 var container string
 var containerRootfs string
+var qmakeMode = false
 
 var paths = []string{"var", "bin", "boot", "dev", "etc", "lib", "lib64", "media", "mnt", "opt", "proc", "root", "run", "sbin", "srv", "sys", "usr"}
-var re = regexp.MustCompile("(^|[^\\w+]|\\s+|-\\w)\\/(" + strings.Join(paths, "|") + ")")
+var reOut = regexp.MustCompile("(^|[^\\w+]|\\s+|-\\w)\\/(" + strings.Join(paths, "|") + ")")
 
 func mapAndWrite(line *bytes.Buffer, out io.WriteCloser) {
 	in := string(line.Bytes())
-	in = re.ReplaceAllString(in, "$1"+containerRootfs+"/$2")
-	out.Write([]byte(in))
+	if qmakeMode && strings.HasPrefix(in, "QT_HOST_BINS") {
+		out.Write([]byte(fmt.Sprintf("QT_HOST_BINS:%s\n", path.Clean(path.Join(containerRootfs, "..")))))
+	} else {
+		in = reOut.ReplaceAllString(in, "$1"+containerRootfs+"/$2")
+		out.Write([]byte(in))
+	}
 }
 
 func mapFunc(in *os.File, output io.WriteCloser, wg *sync.WaitGroup) {
@@ -81,8 +87,42 @@ func executeCommand() int {
 	//figure out the container we should execute the command in
 	//the parent directories name is supposed to be named like it
 	//toolpath := filepath.Base(os.Args[0])
-	container = filepath.Base(filepath.Dir(os.Args[0]))
+
+	var absPath string
 	var err error
+	//absolute path, just use it
+	if path.IsAbs(os.Args[0]) {
+		absPath = filepath.Clean(os.Args[0])
+	} else {
+		//could be execution from the PATH var or a relative path
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to get working directory: %v\n", err)
+			return 1
+		}
+
+		absFromCwd := path.Join(wd, os.Args[0])
+		if _, err := os.Stat(absFromCwd); os.IsNotExist(err) {
+			//file does not exist, must be taken from PATH
+			absFromPATH, err := exec.LookPath(os.Args[0])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Unable to get query PATH for: %s\nError: %v\n", os.Args[0], err)
+				return 1
+			}
+			absPath = absFromPATH
+			err = nil
+		} else {
+			absPath = path.Clean(absFromCwd)
+			err = nil
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to determine path to the container: %v\n", err)
+		return 1
+	}
+
+	container = filepath.Base(filepath.Dir(absPath))
 
 	containerRootfs, err = lm_sdk_tools.ContainerRootfs(container)
 	if err != nil {
@@ -104,6 +144,8 @@ func executeCommand() int {
 
 	cmdName := filepath.Base(os.Args[0])
 	cmdArgs := os.Args[1:]
+
+	qmakeMode = cmdName == "qmake"
 
 	if cmdName == "cmake" {
 		killCache := true
@@ -129,10 +171,16 @@ func executeCommand() int {
 		}
 	}
 
+	//map all paths in cmdArgs into the container
+	var cmdArgsClean = []string{}
+	for _, opt := range cmdArgs {
+		cmdArgsClean = append(cmdArgsClean, strings.Replace(opt, containerRootfs, "", -1))
+	}
+
 	//build the command, sourcing the dotfiles to get a decent shell
 	args := []string{}
 	args = append(args, cmdName)
-	args = append(args, cmdArgs...)
+	args = append(args, cmdArgsClean...)
 
 	//until LXD supports sending signals to processes we need to have a pidfile
 	u1 := uuid.NewUUID()
