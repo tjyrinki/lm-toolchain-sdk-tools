@@ -110,12 +110,15 @@ func (c *createCmd) run(args []string) error {
 		return fmt.Errorf("Container with requested name exists already")
 	}
 
+	// lxc >= 2.1.0 has changed config file format in some cases
+	newFormat := lm_sdk_tools.LXCNewVersion()
+
 	container, err := lxc.NewContainer(c.name, lm_sdk_tools.LMTargetPath())
 	if err != nil {
 		return fmt.Errorf("ERROR: %s", err.Error())
 	}
 
-	mapfile, err := c.GenerateDefaultConfigFile(c.distro)
+	mapfile, err := c.GenerateDefaultConfigFile(c.distro, newFormat)
 	if err != nil {
 		return fmt.Errorf("ERROR: %s", err.Error())
 	}
@@ -197,11 +200,11 @@ func (c *createCmd) run(args []string) error {
 		}
 		return err
 	}
-
+	lm_sdk_tools.CheckContainerPermissions(&lmContainer)
 	return nil
 }
 
-func (c *createCmd) GenerateDefaultConfigFile(distro string) (string, error) {
+func (c *createCmd) GenerateDefaultConfigFile(distro string, newFormat bool) (string, error) {
 	confDir, err := lm_sdk_tools.ConfigPath()
 	if err != nil {
 		return "", err
@@ -209,7 +212,7 @@ func (c *createCmd) GenerateDefaultConfigFile(distro string) (string, error) {
 
 	confFileName := fmt.Sprintf("%s/lmsdk-%s-default.conf", confDir, distro)
 
-	fmt.Printf("Creating %s\n", confFileName)
+	fmt.Printf("Creating config file %s, new format: %v\n", confFileName, newFormat)
 
 	confFile, err := os.Create(confFileName)
 	if err != nil {
@@ -258,17 +261,21 @@ func (c *createCmd) GenerateDefaultConfigFile(distro string) (string, error) {
 
 	}
 
+	id_map_string := "lxc.idmap"
+	if !newFormat {
+		id_map_string = "lxc.id_map"
+	}
 	//map the first uid and gid range before the current users id
-	writer.WriteString(fmt.Sprintf("lxc.id_map = u 0 %d %d\n", firstUid, containerUid))
-	writer.WriteString(fmt.Sprintf("lxc.id_map = g 0 %d %d\n", firstGid, containerGid))
+	writer.WriteString(fmt.Sprintf("%s = u 0 %d %d\n", id_map_string, firstUid, containerUid))
+	writer.WriteString(fmt.Sprintf("%s = g 0 %d %d\n", id_map_string, firstGid, containerGid))
 
 	//now the user ID is mapped 1:1
-	writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d 1\n", containerUid, uid))
-	writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d 1\n", containerGid, gid))
+	writer.WriteString(fmt.Sprintf("%s = u %d %d 1\n", id_map_string, containerUid, uid))
+	writer.WriteString(fmt.Sprintf("%s = g %d %d 1\n", id_map_string, containerGid, gid))
 
 	//and the rest
-	writer.WriteString(fmt.Sprintf("lxc.id_map = u %d %d %d\n", containerUid+1, firstUid+containerUid+1, uidRange-containerUid-1))
-	writer.WriteString(fmt.Sprintf("lxc.id_map = g %d %d %d\n", containerGid+1, firstGid+containerGid+1, gidRange-containerGid-1))
+	writer.WriteString(fmt.Sprintf("%s = u %d %d %d\n", id_map_string, containerUid+1, firstUid+containerUid+1, uidRange-containerUid-1))
+	writer.WriteString(fmt.Sprintf("%s = g %d %d %d\n", id_map_string, containerGid+1, firstGid+containerGid+1, gidRange-containerGid-1))
 	writer.Flush()
 
 	return confFileName, nil

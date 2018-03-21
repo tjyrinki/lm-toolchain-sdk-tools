@@ -537,7 +537,7 @@ func (c *rpmbuildCmd) run(args []string) error {
 		command = fmt.Sprintf("cp -rv %s %s", path.Join(builddir, "RPMS", "*", "*"), c.outputDirectory)
 		out, err := exec.Command("bash", "-c", command).Output()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to copy results: %s\n", out)
+			fmt.Fprintf(os.Stderr, "Failed to copy results: %s , %v\n", out, err)
 			return err
 		}
 	}

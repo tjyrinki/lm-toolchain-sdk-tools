@@ -71,7 +71,7 @@ cleanup() {
 }
 
 wget_wrapper() {
-    for i in $(seq 3); do   
+    for i in $(seq 3); do
         if ${DOWNLOADER_PATH} $@; then
             return 0
         fi
@@ -605,6 +605,13 @@ if [ -e "$(relevant_file create-message)" ]; then
     echo ""
     echo "---"
     cat "$(relevant_file create-message)"
+fi
+
+echo Checking lxc-update-config..
+# Update the config file if lxc-update-config command exists
+if hash lxc-update-config 2>/dev/null; then
+    echo Running lxc-update-config for ${LXC_PATH}/config ..
+    lxc-update-config -c ${LXC_PATH}/config
 fi
 
 exit 0

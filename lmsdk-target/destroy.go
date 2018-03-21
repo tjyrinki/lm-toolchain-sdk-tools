@@ -43,6 +43,5 @@ func (c *destroyCmd) run(args []string) error {
 		os.Exit(1)
 	}
 	c.container = args[0]
-
 	return lm_sdk_tools.RemoveContainerSync(c.container)
 }

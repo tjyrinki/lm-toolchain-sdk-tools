@@ -185,9 +185,16 @@ func RemoveContainerSync(container string) error {
 	if c.State() != lxc.STOPPED {
 		c.Stop()
 	}
-
+	lmc, _ := toLmContainer(c)
+	CheckContainerPermissions(lmc)
+	snapshots, _ := c.Snapshots()
+	if len(snapshots) > 0 {
+		if err := c.DestroyAllSnapshots(); err != nil {
+			return fmt.Errorf("Could not destroy container snapshots: %v", err.Error())
+		}
+	}
 	if err := c.Destroy(); err != nil {
-		return fmt.Errorf("Cold not remove the target: %s", err.Error())
+		return fmt.Errorf("Cold not destroy container: %v", err.Error())
 	}
 	return nil
 }
@@ -492,7 +499,6 @@ func EnsureRequiredDirectoriesExist(doFix bool) error {
 }
 
 func EnsureDirExistsWithPermissions(dirName string, ownerUid, ownerGid int, perm os.FileMode, doFix bool) error {
-
 	if _, err := os.Stat(dirName); os.IsNotExist(err) {
 		if !doFix {
 			return fmt.Errorf("Directory does not exist: %v", err)
@@ -686,4 +692,37 @@ func RemoveZypperRepository(name string, container *LMTargetContainer) error {
 		return fmt.Errorf("Failed to execute zypper rr command in the container: %v", err)
 	}
 	return nil
+}
+
+/*
+  Returns true if lxc uses new config format, in practice
+	lxc >= 2.1.0
+	Note:
+	lxc.VersionAtLeast and lxc.VersionNumber seem to return 2.1.0 on 2.0.8
+	and are not used because of that. Bug in lxc-go?
+*/
+func LXCNewVersion() bool {
+	lxcver := lxc.Version()
+	return !strings.HasPrefix(lxcver, "2.0")
+}
+
+/*
+  checkContainerPermissions makes sure the container directory is
+  user-writable on lxc >= 2.1.0. On older lxc versions the permissions
+  do not seem to change so this is not done.
+  If a better solution is found for the permission issue, this can be
+  removed.
+*/
+func CheckContainerPermissions(container *LMTargetContainer) {
+	if container != nil && LXCNewVersion() {
+		uid := os.Getuid()
+		cmd := exec.Command("lxc-usernsexec", "-m", "b:0:"+strconv.Itoa(uid)+":1", "-m", "b:1:100000:65535", "--",
+			"chown", "-R", "0:0", LMTargetPath()+"/"+container.Name)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			fmt.Printf("CheckContainerPermissions failed to fix permissions with usernsexec:\n%v\n", err)
+		}
+	}
 }

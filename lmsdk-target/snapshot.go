@@ -39,7 +39,7 @@ type snapshotCmd struct {
 
 func (c *snapshotCmd) usage() string {
 	return `Creates a snapshot of the container.
- 
+
  lmsdk-target snapshot <container>`
 }
 
@@ -198,6 +198,8 @@ func (c *snapshotCmd) run(args []string) error {
 		fmt.Printf("Created snapshot: %s\n", snap.Name)
 		return nil
 	}
+	lm_sdk_tools.CheckContainerPermissions(container)
+
 	return nil
 }
 
